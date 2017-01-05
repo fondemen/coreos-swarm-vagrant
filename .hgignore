@@ -1,0 +1,7 @@
+
+syntax: regexp
+^\.(?!hgignore)
+syntax: regexp
+^etcd_token_url$
+syntax: regexp
+^user-data-.*
