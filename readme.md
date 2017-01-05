@@ -4,13 +4,13 @@ Key value store is etcd.
 
 Both a public (DHCP assigned) and a private (only visible on the node) network interface are set up. By default, etcd and swarm are advertized using the public interface so that one can set up multiple nodes on different machines of the local network.
 
-== Requirements ==
+## Requirements ##
 
 This script was tested against Vagrant > 1.9 and Virtualbox > 5.
 It shoud be OK on Linux (tested on 4.9), MacOS X (tested on 10.11), Windows (tested on 10). It might also work on other hosts, please report other working stations...
 In case you use Windows, you'll need an ssh client, such as the ones you gen when installing git, Cygwin or MinGW64.
 
-== Usage ==
+## Usage ##
 
 First, clone the repo
 `git clone https://github.com/fondemen/coreos-swarm-vagrant.git ; cd coreos-swarm-vagrant`
@@ -24,7 +24,8 @@ To start Swarm, then issue
 ```
 export SWARM=on
 vagrant provision
-``` or on windows
+```
+or on windows
 ```
 set SWARM=on
 vagrant provision
@@ -50,7 +51,7 @@ vagrant up docker-4
 ```
 As etcd should be up, there is no longer need for the two phase `vagrant up` then `vagrant provision` for this node to join the Swarm.
 
-== Setting up a node on another virtualbox host ==
+## Setting up a node on another virtualbox host ##
 
 If you wand to add a node on another host, copy the contents of the previously generated /etcd_token_url/ file and fire on the new host (replace XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX with you etcd token):
 ```
