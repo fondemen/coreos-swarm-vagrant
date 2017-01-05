@@ -5,48 +5,47 @@
 # http://tech.paulcz.net/2016/01/running-ha-docker-swarm/
 # http://docs.master.dockerproject.org/engine/swarm/swarm-tutorial/create-swarm/
 
-leader_ip = [192,168,1,100]
+def read_bool_env key
+  return ENV[key] && (!['off', 'false', '0'].include?(ENV[key].strip.downcase)) || false
+end
 
-coreos_canal = 'alpha' # could be 'beta' or 'stable' though stable has a docker 1.11 vers at the time of writing
+leader_ip = "192.168.1.100".split('.').map {|nbr| nbr.to_i} # private ip ; public ip is to be set up with DHCP
+hostname_prefix = 'docker-'
 
+nodes = if read_bool_env 'NODES' then ENV['NODES'].to_i else 3 end rescue 3
+raise "There should be at least one node while prescribed #{nodes} ; you can set up node number like this: NODES=2 vagrant up" unless nodes.is_a? Integer and nodes > 1
+
+coreos_canal = 'alpha' # could be 'beta' or 'stable' though stable has a docker 1.11 versoin at the time of writing (so no SWARM mode available)
 box = "coreos-#{coreos_canal}"
 #box_url = 'https://svn.ensisa.uha.fr/vagrant/coreos_production_vagrant.json'
 box_url = "https://storage.googleapis.com/#{coreos_canal}.release.core-os.net/amd64-usr/current/coreos_production_vagrant.json"
 # see https://coreos.com/blog/coreos-clustering-with-vagrant.html
+public_itf = 'eth1' # depends on chosen box
+private_itf = 'eth2' # depends on chosen box
+ipv6 = read_bool_env 'IPV6' # ipv6 is disabled by default ; use IPV6=on for avoiding this (to be set at node creation only)
+default_itf = read_bool_env 'DEFAULT_PUBLIC_ITF' # default gateway
 
-#box = 'debian/contrib-jessie64' # raises network problems, anyway, this is harder to set up
-#box_url = 'https://svn.ensisa.uha.fr/vagrant/contrib-jessie64.box'
-
-nodes = 3
-
-etcd_url = true # undef to avoid creating one, or the url
-
-public_itf = 'eth1'
-private_itf = 'eth2'
-
-default_itf = public_itf # default gateway
-etcd_advertised_itf = public_itf # interface used by etcd (should it be public or private ?)
-
+etcd_url = ENV['ETCD_TOKEN_URL'] || true # false/undef to avoid creating one, or the url such as https://discovery.etcd.io/XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
+raise "ETCD_TOKEN_URL should be an url such as https://discovery.etcd.io/XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX ; ignore this parameter to generate one for a new cluster" if etcd_url.is_a? String and not etcd_url.start_with? 'https://discovery.etcd.io/'
+etcd_advertised_itf = ENV['ETCD_ITF'] || public_itf # interface used by etcd (i.e. should it be public or private ?)
+  
 definitions = (1..nodes).map do |node_number|
   ip = leader_ip.dup
   ip[-1] += node_number-1
-  {:hostname => "docker-#{node_number}", :ip => ip.join('.')}
+  {:hostname => "#{hostname_prefix}#{node_number}", :ip => ip.join('.')}
 end
-# puts definitions.inspect
 
 # etc key generation
 etcd_file_path = File.join(File.dirname(__FILE__), 'etcd_token_url')
 # tries to read token
 if etcd_url and not etcd_url.kind_of?(String) and File.file?(etcd_file_path)
-  etcd_url = File.read '.etcd_token_url' rescue true
+  etcd_url = File.read etcd_file_path rescue true
 end
 # generating etc token
 if etcd_url and not etcd_url.kind_of?(String)
   require 'open-uri'
-  
   etcd_url = URI.parse("https://discovery.etcd.io/new?size=#{nodes}").read
 end
-
 if etcd_url and etcd_url.kind_of?(String)
   # Storing found token
   File.open(etcd_file_path, 'w') do |file|
@@ -90,10 +89,13 @@ Vagrant.configure("2") do |config_all|
         # Making it sure a default route exists
         config.vm.provision "shell", run: "always", inline: "ip route show | grep -q '^default' || dhclient #{default_itf}"
       end
-      # Disabling IPv6
-      config.vm.provision "shell", inline: "sed -i '/disable_ipv6/d' /etc/sysctl.conf; find /proc/sys/net/ipv6/ -name disable_ipv6 | sed -e 's;^/proc/sys/;;' -e 's;/;.;g' -e 's;$; = 1;' >> /etc/sysctl.conf ; sysctl -p"
+      unless ipv6
+        # Disabling IPv6
+        ipv6_file = '/etc/sysctl.d/vagrant-disable-ipv6.conf'
+        config.vm.provision "shell", inline: "touch #{ipv6_file} ; sed -i '/disable_ipv6/d' #{ipv6_file}; find /proc/sys/net/ipv6/ -name disable_ipv6 | sed -e 's;^/proc/sys/;;' -e 's;/;.;g' -e 's;$; = 1;' >> #{ipv6_file} ; sysctl -p #{ipv6_file}"
+      end
       # checking all interfaces are active
-      config.vm.provision "shell", run: "always", inline: "ip a | grep '^[0-9]' | grep DOWN | cut -d: -f2 | grep -v docker | xargs -I ITF ifup ITF"
+      config.vm.provision "shell", run: "always", inline: "ip a | grep '^[0-9]' | grep DOWN | cut -d: -f2 | grep -v docker | xargs -I ITF ip link set dev ITF up"
       
       # Referencing all IPs
       definitions.each do |other_nodes|
