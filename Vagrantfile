@@ -7,19 +7,25 @@
 
 leader_ip = [192,168,1,100]
 
-box = 'coreos-alpha'
-box_url = 'https://svn.ensisa.uha.fr/vagrant/coreos_production_vagrant.json'
-#box_url = 'https://storage.googleapis.com/alpha.release.core-os.net/amd64-usr/current/coreos_production_vagrant.json'
+coreos_canal = 'alpha' # could be 'beta' or 'stable' though stable has a docker 1.11 vers at the time of writing
+
+box = "coreos-#{coreos_canal}"
+#box_url = 'https://svn.ensisa.uha.fr/vagrant/coreos_production_vagrant.json'
+box_url = "https://storage.googleapis.com/#{coreos_canal}.release.core-os.net/amd64-usr/current/coreos_production_vagrant.json"
 # see https://coreos.com/blog/coreos-clustering-with-vagrant.html
 
-#box = 'debian/contrib-jessie64'
+#box = 'debian/contrib-jessie64' # raises network problems, anyway, this is harder to set up
 #box_url = 'https://svn.ensisa.uha.fr/vagrant/contrib-jessie64.box'
 
 nodes = 3
 
 etcd_url = true # undef to avoid creating one, or the url
 
-default_itf = 'eth1'
+public_itf = 'eth1'
+private_itf = 'eth2'
+
+default_itf = public_itf # default gateway
+etcd_advertised_itf = public_itf # interface used by etcd (should it be public or private ?)
 
 definitions = (1..nodes).map do |node_number|
   ip = leader_ip.dup
@@ -80,9 +86,9 @@ Vagrant.configure("2") do |config_all|
       # Network stuff
       if default_itf
         # Clearing unwanted gateways
-        config.vm.provision "shell",  run: "always",  inline: "ip route show | grep '^default' | sed 's;^.*\\sdev\\s*\\([a-z0-9]*\\)\\s*.*$;\\1;' | grep -v " + default_itf + " | xargs -I ITF ip route del default dev ITF"
+        config.vm.provision "shell",  run: "always",  inline: "ip route show | grep '^default' | sed 's;^.*\\sdev\\s*\\([a-z0-9]*\\)\\s*.*$;\\1;' | grep -v #{default_itf} | xargs -I ITF ip route del default dev ITF"
         # Making it sure a default route exists
-        config.vm.provision "shell", run: "always", inline: "ip route show | grep -q '^default' || dhclient " + default_itf
+        config.vm.provision "shell", run: "always", inline: "ip route show | grep -q '^default' || dhclient #{default_itf}"
       end
       # Disabling IPv6
       config.vm.provision "shell", inline: "sed -i '/disable_ipv6/d' /etc/sysctl.conf; find /proc/sys/net/ipv6/ -name disable_ipv6 | sed -e 's;^/proc/sys/;;' -e 's;/;.;g' -e 's;$; = 1;' >> /etc/sysctl.conf ; sysctl -p"
@@ -112,10 +118,10 @@ hostname: #{hostname}
 coreos:
   etcd2:
     discovery: #{etcd_url}
-    advertise-client-urls: http://#{ip}:2379,http://#{ip}:4001
-    initial-advertise-peer-urls: http://#{ip}:2380
+    advertise-client-urls: http://$public_ipv4:2379,http://$public_ipv4:4001
+    initial-advertise-peer-urls: http://$public_ipv4:2380
     listen-client-urls: http://0.0.0.0:2379,http://0.0.0.0:4001
-    listen-peer-urls: http://#{ip}:2380
+    listen-peer-urls: http://$public_ipv4:2380
   units:
     - name: etcd2.service
       command: start
@@ -123,6 +129,7 @@ EOF
           end
       
         config.vm.provision :file, :source => config_file, :destination => "/tmp/vagrantfile-user-data"
+        config.vm.provision :shell, :inline => "sed -i -e \"s/\\$public_ipv4/$(ip -4 addr list #{etcd_advertised_itf} | grep inet | sed 's/.*inet\\s*\\([0-9.]*\\).*/\\1/')/g\" /tmp/vagrantfile-user-data"
         config.vm.provision :shell, :inline => "mv /tmp/vagrantfile-user-data /var/lib/coreos-vagrant/", :privileged => true
       end
       
