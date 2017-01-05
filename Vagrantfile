@@ -6,16 +6,18 @@
 # http://docs.master.dockerproject.org/engine/swarm/swarm-tutorial/create-swarm/
 
 def read_bool_env key
+  key = key.to_s
   return ENV[key] && (!['off', 'false', '0'].include?(ENV[key].strip.downcase)) || false
 end
 
-leader_ip = "192.168.1.100".split('.').map {|nbr| nbr.to_i} # private ip ; public ip is to be set up with DHCP
+leader_ip = (ENV['MASTER_IP'] || "192.168.1.100").split('.').map {|nbr| nbr.to_i} # private ip ; public ip is to be set up with DHCP
+raise "Master ip should be an ipv4 adress unlike #{leader_ip}" unless leader_ip.size == 4 and leader_ip.all? { |ipelt| (0..255).include? ipelt }
 hostname_prefix = 'docker-'
 
 nodes = if read_bool_env 'NODES' then ENV['NODES'].to_i else 3 end rescue 3
-raise "There should be at least one node while prescribed #{nodes} ; you can set up node number like this: NODES=2 vagrant up" unless nodes.is_a? Integer and nodes > 1
+raise "There should be at least one node and at most 255 while prescribed #{nodes} ; you can set up node number like this: NODES=2 vagrant up" unless nodes.is_a? Integer and nodes > 1 and nodes <= 255
 
-coreos_canal = 'alpha' # could be 'beta' or 'stable' though stable has a docker 1.11 versoin at the time of writing (so no SWARM mode available)
+coreos_canal = 'alpha' # could be 'beta' or 'stable' though stable has a docker 1.11 version at the time of writing (so no SWARM mode available)
 box = "coreos-#{coreos_canal}"
 #box_url = 'https://svn.ensisa.uha.fr/vagrant/coreos_production_vagrant.json'
 box_url = "https://storage.googleapis.com/#{coreos_canal}.release.core-os.net/amd64-usr/current/coreos_production_vagrant.json"
@@ -25,14 +27,26 @@ private_itf = 'eth2' # depends on chosen box
 ipv6 = read_bool_env 'IPV6' # ipv6 is disabled by default ; use IPV6=on for avoiding this (to be set at node creation only)
 default_itf = read_bool_env 'DEFAULT_PUBLIC_ITF' # default gateway
 
-etcd_url = ENV['ETCD_TOKEN_URL'] || true # false/undef to avoid creating one, or the url such as https://discovery.etcd.io/XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
+etcd_url = ENV['ETCD_TOKEN_URL'] || true
 raise "ETCD_TOKEN_URL should be an url such as https://discovery.etcd.io/XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX ; ignore this parameter to generate one for a new cluster" if etcd_url.is_a? String and not etcd_url.start_with? 'https://discovery.etcd.io/'
-etcd_advertised_itf = ENV['ETCD_ITF'] || public_itf # interface used by etcd (i.e. should it be public or private ?)
-  
+etcd_advertised_itf = case ENV['ETCD_ITF']
+  when 'public'
+    public_itf
+  when 'private'
+    private_itf
+  when String
+    ENV['ETCD_ITF'].strip
+  else
+    public_itf
+  end # interface used by etcd (i.e. should it be public or private ?)
+
 definitions = (1..nodes).map do |node_number|
+  hostname = "#{hostname_prefix}#{node_number}"
   ip = leader_ip.dup
   ip[-1] += node_number-1
-  {:hostname => "#{hostname_prefix}#{node_number}", :ip => ip.join('.')}
+  ip_str = ip.join('.')
+  raise "Not enough adresses available for all nodes, e.g. can't assign IP #{ip_str} to #{hostname} ; lower NODES number or given another MASTER_IP" if ip[-1] > 255
+  {:hostname => hostname, :ip => ip_str}
 end
 
 # etc key generation
@@ -41,7 +55,7 @@ etcd_file_path = File.join(File.dirname(__FILE__), 'etcd_token_url')
 if etcd_url and not etcd_url.kind_of?(String) and File.file?(etcd_file_path)
   etcd_url = File.read etcd_file_path rescue true
 end
-# generating etc token
+# generating etcd token
 if etcd_url and not etcd_url.kind_of?(String)
   require 'open-uri'
   etcd_url = URI.parse("https://discovery.etcd.io/new?size=#{nodes}").read
