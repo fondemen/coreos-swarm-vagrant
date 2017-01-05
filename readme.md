@@ -67,3 +67,8 @@ vagrant up docker-4
 ```
 The ETCD_TOKEN_URL is also stored on etcd_token file on the new host making the ETCD_TOKEN_URL parameter useless for next `vagrant up`.
 
+## Destroying cluster ##
+
+Simply issue a `vagrant destroy && rm etcd_token_url && rm user-data-*` on each Vagrant host.
+
+etcd token must be re-created for a new cluster, that's why the *etcd_token_url* file has to be deleted.
