@@ -26,10 +26,7 @@ public_itf = 'eth1' # depends on chosen box
 private_itf = 'eth2' # depends on chosen box
 ipv6 = read_bool_env 'IPV6' # ipv6 is disabled by default ; use IPV6=on for avoiding this (to be set at node creation only)
 default_itf = read_bool_env 'DEFAULT_PUBLIC_ITF' # default gateway
-
-etcd_url = ENV['ETCD_TOKEN_URL'] || true
-raise "ETCD_TOKEN_URL should be an url such as https://discovery.etcd.io/XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX ; ignore this parameter to generate one for a new cluster" if etcd_url.is_a? String and not etcd_url.start_with? 'https://discovery.etcd.io/'
-etcd_advertised_itf = case ENV['ETCD_ITF']
+internal_itf = case ENV['INTERNAL_ITF']
   when 'public'
     public_itf
   when 'private'
@@ -38,7 +35,13 @@ etcd_advertised_itf = case ENV['ETCD_ITF']
     ENV['ETCD_ITF'].strip
   else
     public_itf
-  end # interface used by etcd (i.e. should it be public or private ?)
+  end # interface used for internal node communication by etcd and swarm (i.e. should it be public or private ?)
+
+etcd_url = ENV['ETCD_TOKEN_URL'] || true
+raise "ETCD_TOKEN_URL should be an url such as https://discovery.etcd.io/XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX ; ignore this parameter to generate one for a new cluster" if etcd_url.is_a? String and not etcd_url.start_with? 'https://discovery.etcd.io/'
+
+swarm = read_bool_env 'SWARM' # swarm mode is disabled by default ; use SWARM=on for setting up (only at node creation of leader)
+raise "You shouldn't disable etcd when swarm mode is enabled" if swarm and not etcd_url
 
 definitions = (1..nodes).map do |node_number|
   hostname = "#{hostname_prefix}#{node_number}"
@@ -49,6 +52,7 @@ definitions = (1..nodes).map do |node_number|
   {:hostname => hostname, :ip => ip_str}
 end
 
+raise "There shuould be at least 3 nodes when etcd is enabled" if etcd_url and nodes < 3
 # etc key generation
 etcd_file_path = File.join(File.dirname(__FILE__), 'etcd_token_url')
 # tries to read token
@@ -143,12 +147,37 @@ coreos:
       command: start
 EOF
           end
+        definition[:config_file] = config_file
       
-        config.vm.provision :file, :source => config_file, :destination => "/tmp/vagrantfile-user-data"
-        config.vm.provision :shell, :inline => "sed -i -e \"s/\\$public_ipv4/$(ip -4 addr list #{etcd_advertised_itf} | grep inet | sed 's/.*inet\\s*\\([0-9.]*\\).*/\\1/')/g\" /tmp/vagrantfile-user-data"
-        config.vm.provision :shell, :inline => "mv /tmp/vagrantfile-user-data /var/lib/coreos-vagrant/", :privileged => true
-      end
+        config.vm.provision :file, :source => config_file, :destination => '/tmp/vagrantfile-user-data'
+        config.vm.provision :shell, :inline => "sed -i -e \"s/\\$public_ipv4/$(ip -4 addr list #{internal_itf} | grep inet | sed 's/.*inet\\s*\\([0-9.]*\\).*/\\1/')/g\" /tmp/vagrantfile-user-data"
+        config.vm.provision :shell, :inline => 'mv /tmp/vagrantfile-user-data /var/lib/coreos-vagrant/', :privileged => true
+        
+        if swarm
+          
+          # Waiting for etcd to be up and running
+          
+          if node_number == 1
+            # We are at the leader swarm node
+            
+            config.vm.provision :shell, :inline => <<-EOF
+\# Creating swarm (if not already)
+if [ "0" != $(docker node list 1>/dev/null 2>&1;echo $?) ]; then echo "initializing swarm"; docker swarm init --advertise-addr #{internal_itf} --listen-addr #{internal_itf}; fi
+\# Storing join token in etcd
+etcdctl ls | grep vagrant-swarm >/dev/null || etcdctl mkdir vagrant-swarm
+etcdctl get /vagrant-swarm/swarm_#{hostname}_adress 1>/dev/null 2>&1 || etcdctl set /vagrant-swarm/swarm_#{hostname}_adress $(docker swarm join-token worker | sed 's;\s;;g' | grep -o '^[0-9]*\.[0-9]*\.[0-9]*\.[0-9]*:[0-9]*$')
+etcdctl get /vagrant-swarm/swarm_token_worker 1>/dev/null 2>&1 || etcdctl set /vagrant-swarm/swarm_token_worker $(docker swarm join-token -q worker)
+EOF
+          else
+            # We are at the worker swarm node
+            config.vm.provision :shell, :inline => "if [ \"0\" != $(docker node list 1>/dev/null 2>&1;echo $?) ]; then echo \"joining swarm as worker\"; docker swarm join --token $(etcdctl get /vagrant-swarm/swarm_token_worker) --advertise-addr #{internal_itf} --listen-addr #{internal_itf} $(etcdctl get /vagrant-swarm/swarm_docker-1_adress); fi" 
+            
+          end # swarm worker
+          
+        end # swarm
+        
+      end # etcd
       
-    end
-  end
-end
+    end # node cfg
+  end # nodes
+end # config
