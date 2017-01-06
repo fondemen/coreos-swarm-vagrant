@@ -11,7 +11,7 @@ def read_bool_env key
 end
 
 leader_ip = (ENV['MASTER_IP'] || "192.168.1.100").split('.').map {|nbr| nbr.to_i} # private ip ; public ip is to be set up with DHCP
-raise "Master ip should be an ipv4 adress unlike #{leader_ip}" unless leader_ip.size == 4 and leader_ip.all? { |ipelt| (0..255).include? ipelt }
+raise "Master ip should be an ipv4 address unlike #{leader_ip}" unless leader_ip.size == 4 and leader_ip.all? { |ipelt| (0..255).include? ipelt }
 hostname_prefix = 'docker-'
 
 nodes = if read_bool_env 'NODES' then ENV['NODES'].to_i else 3 end rescue 3
@@ -42,13 +42,14 @@ raise "ETCD_TOKEN_URL should be an url such as https://discovery.etcd.io/XXXXXXX
 
 swarm = read_bool_env 'SWARM' # swarm mode is disabled by default ; use SWARM=on for setting up (only at node creation of leader)
 raise "You shouldn't disable etcd when swarm mode is enabled" if swarm and not etcd_url
+swarm_managers = (ENV['SWARM_MANAGERS'] || 'docker-2,docker-3').split(',').map { |node| node.strip }.select { |node| node and node != ''}
 
 definitions = (1..nodes).map do |node_number|
   hostname = "#{hostname_prefix}#{node_number}"
   ip = leader_ip.dup
   ip[-1] += node_number-1
   ip_str = ip.join('.')
-  raise "Not enough adresses available for all nodes, e.g. can't assign IP #{ip_str} to #{hostname} ; lower NODES number or given another MASTER_IP" if ip[-1] > 255
+  raise "Not enough addresses available for all nodes, e.g. can't assign IP #{ip_str} to #{hostname} ; lower NODES number or give another MASTER_IP" if ip[-1] > 255
   {:hostname => hostname, :ip => ip_str}
 end
 
@@ -62,7 +63,8 @@ end
 # generating etcd token
 if etcd_url and not etcd_url.kind_of?(String)
   require 'open-uri'
-  etcd_url = URI.parse("https://discovery.etcd.io/new?size=#{nodes}").read
+  puts 'Requesting a brand new etcd token'
+  etcd_url = URI.parse("https://discovery.etcd.io/new").read
 end
 if etcd_url and etcd_url.kind_of?(String)
   # Storing found token
@@ -155,24 +157,29 @@ EOF
         
         if swarm
           
-          # Waiting for etcd to be up and running
-          
-          if node_number == 1
-            # We are at the leader swarm node
-            
-            config.vm.provision :shell, :inline => <<-EOF
-\# Creating swarm (if not already)
-if [ "0" != $(docker node list 1>/dev/null 2>&1;echo $?) ]; then echo "initializing swarm"; docker swarm init --advertise-addr #{internal_itf} --listen-addr #{internal_itf}; fi
-\# Storing join token in etcd
+          role = if node_number == 1 or swarm_managers.include? hostname then 'manager' else 'worker' end
+          config.vm.provision :shell, :inline => <<-EOF
+\# Checking whether a swarm already exists
 etcdctl ls | grep vagrant-swarm >/dev/null || etcdctl mkdir vagrant-swarm
-etcdctl get /vagrant-swarm/swarm_#{hostname}_adress 1>/dev/null 2>&1 || etcdctl set /vagrant-swarm/swarm_#{hostname}_adress $(docker swarm join-token worker | sed 's;\s;;g' | grep -o '^[0-9]*\.[0-9]*\.[0-9]*\.[0-9]*:[0-9]*$')
-etcdctl get /vagrant-swarm/swarm_token_worker 1>/dev/null 2>&1 || etcdctl set /vagrant-swarm/swarm_token_worker $(docker swarm join-token -q worker)
+MANAGERS=$(etcdctl ls /vagrant-swarm | grep '_address$' | sed 's;^/vagrant-swarm/swarm_\\(.*\\)_address;\\1;')
+if [ -z "$MANAGERS" ]; then
+  \# first node to appear: creating swarm (if not already)
+  echo "initializing swarm";
+  docker swarm init --advertise-addr #{internal_itf} --listen-addr #{internal_itf};
+elif [ "0" != $(docker node list 1>/dev/null 2>&1;echo $?) ]; then
+  echo \"joining swarm as #{role}\"
+  \# iterating over manager nodes to join
+  for MANAGER in $MANAGERS; do
+    docker swarm join --token $(etcdctl get "/vagrant-swarm/swarm_${MANAGER}_token_#{role}") $(etcdctl get "/vagrant-swarm/swarm_${MANAGER}_address") && break
+  done
+fi
+if [ "#{role}" == "manager" ]; then
+  \# Storing join token in etcd
+  etcdctl get /vagrant-swarm/swarm_#{hostname}_address 1>/dev/null 2>&1 || etcdctl set /vagrant-swarm/swarm_#{hostname}_address $(docker swarm join-token worker | sed 's;\\s;;g' | grep -o '^[0-9]*\\.[0-9]*\\.[0-9]*\\.[0-9]*:[0-9]*$')
+  etcdctl get /vagrant-swarm/swarm_#{hostname}_token_worker 1>/dev/null 2>&1 || etcdctl set /vagrant-swarm/swarm_#{hostname}_token_worker $(docker swarm join-token -q worker)
+  etcdctl get /vagrant-swarm/swarm_#{hostname}_token_manager 1>/dev/null 2>&1 || etcdctl set /vagrant-swarm/swarm_#{hostname}_token_manager $(docker swarm join-token -q manager)
+fi
 EOF
-          else
-            # We are at the worker swarm node
-            config.vm.provision :shell, :inline => "if [ \"0\" != $(docker node list 1>/dev/null 2>&1;echo $?) ]; then echo \"joining swarm as worker\"; docker swarm join --token $(etcdctl get /vagrant-swarm/swarm_token_worker) --advertise-addr #{internal_itf} --listen-addr #{internal_itf} $(etcdctl get /vagrant-swarm/swarm_docker-1_adress); fi" 
-            
-          end # swarm worker
           
         end # swarm
         
