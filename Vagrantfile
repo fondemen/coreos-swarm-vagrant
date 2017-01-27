@@ -5,9 +5,9 @@
 # http://tech.paulcz.net/2016/01/running-ha-docker-swarm/
 # http://docs.master.dockerproject.org/engine/swarm/swarm-tutorial/create-swarm/
 
-def read_bool_env key
+def read_bool_env key, default_value = false
   key = key.to_s
-  return ENV[key] && (!['off', 'false', '0'].include?(ENV[key].strip.downcase)) || false
+  return ENV[key] && (!['off', 'false', '0'].include?(ENV[key].strip.downcase)) || default_value
 end
 
 leader_ip = (ENV['MASTER_IP'] || "192.168.1.100").split('.').map {|nbr| nbr.to_i} # private ip ; public ip is to be set up with DHCP
@@ -15,7 +15,7 @@ raise "Master ip should be an ipv4 address unlike #{leader_ip}" unless leader_ip
 hostname_prefix = 'docker-'
 
 nodes = if read_bool_env 'NODES' then ENV['NODES'].to_i else 3 end rescue 3
-raise "There should be at least one node and at most 255 while prescribed #{nodes} ; you can set up node number like this: NODES=2 vagrant up" unless nodes.is_a? Integer and nodes > 1 and nodes <= 255
+raise "There should be at least one node and at most 255 while prescribed #{nodes} ; you can set up node number like this: NODES=2 vagrant up" unless nodes.is_a? Integer and nodes >= 1 and nodes <= 255
 
 coreos_canal = 'alpha' # could be 'beta' or 'stable' though stable has a docker 1.11 version at the time of writing (so no SWARM mode available)
 box = "coreos-#{coreos_canal}"
@@ -25,7 +25,7 @@ box_url = "https://storage.googleapis.com/#{coreos_canal}.release.core-os.net/am
 public_itf = 'eth1' # depends on chosen box
 private_itf = 'eth2' # depends on chosen box
 ipv6 = read_bool_env 'IPV6' # ipv6 is disabled by default ; use IPV6=on for avoiding this (to be set at node creation only)
-default_itf = read_bool_env 'DEFAULT_PUBLIC_ITF' # default gateway
+default_itf = if read_bool_env 'DEFAULT_PUBLIC_ITF' then ENV['DEFAULT_PUBLIC_ITF'] else public_itf end # default gateway
 internal_itf = case ENV['INTERNAL_ITF']
   when 'public'
     public_itf
@@ -53,7 +53,7 @@ definitions = (1..nodes).map do |node_number|
   {:hostname => hostname, :ip => ip_str}
 end
 
-raise "There shuould be at least 3 nodes when etcd is enabled" if etcd_url and nodes < 3
+raise "There should be at least 3 nodes when etcd is enabled" if etcd_url and nodes < 3
 # etc key generation
 etcd_file_path = File.join(File.dirname(__FILE__), 'etcd_token_url')
 # tries to read token
@@ -88,7 +88,7 @@ Vagrant.configure("2") do |config_all|
       begin config.vm.box_url = box_url if box_url rescue nil end
       
       config.vm.hostname = hostname
-      config.vm.network "public_network", bridge: "en0: Ethernet", use_dhcp_assigned_default_route: true
+      config.vm.network "public_network", use_dhcp_assigned_default_route: true#, bridge: "en0: Ethernet"
       config.vm.network "private_network", ip: ip
       
       config.vm.boot_timeout = 300
@@ -99,6 +99,7 @@ Vagrant.configure("2") do |config_all|
           '--name', hostname,
           '--memory', '2048',
           '--cpuexecutioncap', '100',
+          '--paravirtprovider', 'kvm',
         ]
       end
   
@@ -180,7 +181,9 @@ if [ "#{role}" == "manager" ]; then
   etcdctl get /vagrant-swarm/swarm_#{hostname}_token_manager 1>/dev/null 2>&1 || etcdctl set /vagrant-swarm/swarm_#{hostname}_token_manager $(docker swarm join-token -q manager)
 fi
 EOF
-          
+   
+          # TODO: docker service create     --name portainer     --publish 9000:9000     --constraint 'node.role == manager'     --mount type=bind,src=/var/run/docker.sock,dst=/var/run/docker.sock     portainer/portainer     -H unix:///var/run/docker.sock
+       
         end # swarm
         
       end # etcd
