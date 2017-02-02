@@ -90,7 +90,7 @@ Vagrant.configure("2") do |config_all|
       begin config.vm.box_url = box_url if box_url rescue nil end
       
       config.vm.hostname = hostname
-      options = { :use_dhcp_assigned_default_route : true }
+      options = { :use_dhcp_assigned_default_route => true }
       options[:bridge] = host_itf if host_itf
       config.vm.network "public_network", **options
       config.vm.network "private_network", ip: ip
