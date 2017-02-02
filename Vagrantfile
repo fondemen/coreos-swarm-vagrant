@@ -10,6 +10,8 @@ def read_bool_env key, default_value = false
   return ENV[key] && (!['off', 'false', '0'].include?(ENV[key].strip.downcase)) || default_value
 end
 
+host_itf = if read_bool_env 'ITF' then ENV['ITF'] else false end rescue false
+
 leader_ip = (ENV['MASTER_IP'] || "192.168.1.100").split('.').map {|nbr| nbr.to_i} # private ip ; public ip is to be set up with DHCP
 raise "Master ip should be an ipv4 address unlike #{leader_ip}" unless leader_ip.size == 4 and leader_ip.all? { |ipelt| (0..255).include? ipelt }
 hostname_prefix = 'docker-'
@@ -88,7 +90,9 @@ Vagrant.configure("2") do |config_all|
       begin config.vm.box_url = box_url if box_url rescue nil end
       
       config.vm.hostname = hostname
-      config.vm.network "public_network", use_dhcp_assigned_default_route: true#, bridge: "en0: Ethernet"
+      options = { :use_dhcp_assigned_default_route : true }
+      options[:bridge] = host_itf if host_itf
+      config.vm.network "public_network", **options
       config.vm.network "private_network", ip: ip
       
       config.vm.boot_timeout = 300
