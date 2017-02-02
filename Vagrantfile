@@ -7,16 +7,33 @@
 
 def read_bool_env key, default_value = false
   key = key.to_s
-  return ENV[key] && (!['off', 'false', '0'].include?(ENV[key].strip.downcase)) || default_value
+  if ENV.include?(key)
+    return ! (['off', 'false', '0']).include?(ENV[key].strip.downcase)
+  else
+    return default_value
+  end
 end
 
-host_itf = if read_bool_env 'ITF' then ENV['ITF'] else false end rescue false
+def read_env key, default_value = nil, false_value = false
+  key = key.to_s
+  if ENV.include?(key)
+    val = ENV[key].strip
+    if  (['off', 'false', '0']).include? val
+      return false_value
+    else
+      return val
+    end
+  else
+    return default_value
+  end
+end
 
-leader_ip = (ENV['MASTER_IP'] || "192.168.1.100").split('.').map {|nbr| nbr.to_i} # private ip ; public ip is to be set up with DHCP
-raise "Master ip should be an ipv4 address unlike #{leader_ip}" unless leader_ip.size == 4 and leader_ip.all? { |ipelt| (0..255).include? ipelt }
-hostname_prefix = 'docker-'
+host_itf = read_env 'ITF', false
 
-nodes = if read_bool_env 'NODES' then ENV['NODES'].to_i else 3 end rescue 3
+leader_ip = (read_env 'MASTER_IP', "192.168.1.100").split('.').map {|nbr| nbr.to_i} # private ip ; public ip is to be set up with DHCP
+hostname_prefix = read_env 'PREFIX', 'docker-'
+
+nodes = (read_env 'NODES', 3).to_i
 raise "There should be at least one node and at most 255 while prescribed #{nodes} ; you can set up node number like this: NODES=2 vagrant up" unless nodes.is_a? Integer and nodes >= 1 and nodes <= 255
 
 coreos_canal = 'alpha' # could be 'beta' or 'stable' though stable has a docker 1.11 version at the time of writing (so no SWARM mode available)
@@ -27,7 +44,7 @@ box_url = "https://storage.googleapis.com/#{coreos_canal}.release.core-os.net/am
 public_itf = 'eth1' # depends on chosen box
 private_itf = 'eth2' # depends on chosen box
 ipv6 = read_bool_env 'IPV6' # ipv6 is disabled by default ; use IPV6=on for avoiding this (to be set at node creation only)
-default_itf = if read_bool_env 'DEFAULT_PUBLIC_ITF' then ENV['DEFAULT_PUBLIC_ITF'] else public_itf end # default gateway
+default_itf = read_env 'DEFAULT_PUBLIC_ITF', public_itf # default gateway
 internal_itf = case ENV['INTERNAL_ITF']
   when 'public'
     public_itf
@@ -39,8 +56,11 @@ internal_itf = case ENV['INTERNAL_ITF']
     public_itf
   end # interface used for internal node communication by etcd and swarm (i.e. should it be public or private ?)
 
-etcd_url = ENV['ETCD_TOKEN_URL'] || true
-raise "ETCD_TOKEN_URL should be an url such as https://discovery.etcd.io/XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX ; ignore this parameter to generate one for a new cluster" if etcd_url.is_a? String and not etcd_url.start_with? 'https://discovery.etcd.io/'
+shared=read_env 'SHARED', false
+
+etcd_url = read_env 'ETCD_TOKEN_URL', true
+raise "ETCD_TOKEN_URL should be an url such as https://discovery.etcd.io/XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX unlike #{etcd_url} ; ignore this parameter to generate one for a new cluster" if etcd_url.is_a? String and not etcd_url.start_with? 'https://discovery.etcd.io/'
+etcd_url = false unless read_bool_env 'ETCD', true
 
 swarm = read_bool_env 'SWARM' # swarm mode is disabled by default ; use SWARM=on for setting up (only at node creation of leader)
 raise "You shouldn't disable etcd when swarm mode is enabled" if swarm and not etcd_url
@@ -110,7 +130,7 @@ Vagrant.configure("2") do |config_all|
       # Network stuff
       if default_itf
         # Clearing unwanted gateways
-        config.vm.provision "shell",  run: "always",  inline: "ip route show | grep '^default' | sed 's;^.*\\sdev\\s*\\([a-z0-9]*\\)\\s*.*$;\\1;' | grep -v #{default_itf} | xargs -I ITF ip route del default dev ITF"
+        config.vm.provision "shell", run: "always",  inline: "ip route show | grep '^default' | sed 's;^.*\\sdev\\s*\\([a-z0-9]*\\)\\s*.*$;\\1;' | grep -v #{default_itf} | xargs -I ITF ip route del default dev ITF"
         # Making it sure a default route exists
         config.vm.provision "shell", run: "always", inline: "ip route show | grep -q '^default' || dhclient #{default_itf}"
       end
@@ -125,6 +145,10 @@ Vagrant.configure("2") do |config_all|
       # Referencing all IPs
       definitions.each do |other_nodes|
         config.vm.provision "shell", inline: "grep -q " + other_nodes[:hostname] + " /etc/hosts || echo \"" + other_nodes[:ip] + " " + other_nodes[:hostname] + "\" >> /etc/hosts"
+      end
+      
+      if shared
+        config.vm.synced_folder shared.to_s, "/home/core/share", id: "core", :nfs => true,  :mount_options   => ['nolock,vers=3,udp']
       end
       
       if etcd_url
@@ -156,9 +180,9 @@ EOF
           end
         definition[:config_file] = config_file
       
-        config.vm.provision :file, :source => config_file, :destination => '/tmp/vagrantfile-user-data'
-        config.vm.provision :shell, :inline => "sed -i -e \"s/\\$public_ipv4/$(ip -4 addr list #{internal_itf} | grep inet | sed 's/.*inet\\s*\\([0-9.]*\\).*/\\1/')/g\" /tmp/vagrantfile-user-data"
-        config.vm.provision :shell, :inline => 'mv /tmp/vagrantfile-user-data /var/lib/coreos-vagrant/', :privileged => true
+        config.vm.provision :file, run: "always", :source => config_file, :destination => '/tmp/vagrantfile-user-data'
+        config.vm.provision :shell, run: "always", :inline => "sed -i -e \"s/\\$public_ipv4/$(ip -4 addr list #{internal_itf} | grep inet | sed 's/.*inet\\s*\\([0-9.]*\\).*/\\1/')/g\" /tmp/vagrantfile-user-data"
+        config.vm.provision :shell, run: "always", :inline => 'mv /tmp/vagrantfile-user-data /var/lib/coreos-vagrant/', :privileged => true
         
         if swarm
           
