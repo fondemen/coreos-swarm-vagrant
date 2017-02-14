@@ -52,7 +52,7 @@ vagrant up docker-4
 ```
 As etcd should be up, there is no longer need for the two phase `vagrant up` then `vagrant provision` for this node to join the Swarm.
 
-## Setting up anew node on another VirtualBox host ##
+## Setting up a new node on another VirtualBox host ##
 
 If you wand to add a node on another host, copy the contents of the previously generated *etcd_token_url* file and fire on the new host (replace XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX with you etcd token):
 ```
@@ -72,7 +72,7 @@ The ETCD_TOKEN_URL is also stored on etcd_token file on the new host making the 
 ## Managers ##
 
 For swarm to be highly available (i.e. survive the loss of the leader node), one needs to add manager nodes. Default manager nodes are docker-1, docker-2 and docker-3.
-You can change them using the SWARM_MANAGERS environment variable, e.g. `NODES=8 SWARM_MANAGERS=docker-1,docker-3,docker-5 vagrant provision`.
+You can change them using the SWARM_MANAGERS environment variable, e.g. `SWARM=ON NODES=8 SWARM_MANAGERS=docker-1,docker-3,docker-5 vagrant provision`.
 
 ## Destroying cluster ##
 
