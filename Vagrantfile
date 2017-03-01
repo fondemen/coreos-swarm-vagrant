@@ -67,6 +67,10 @@ swarm = read_bool_env 'SWARM' # swarm mode is disabled by default ; use SWARM=on
 raise "You shouldn't disable etcd when swarm mode is enabled" if swarm and not etcd_url
 swarm_managers = (ENV['SWARM_MANAGERS'] || 'docker-2,docker-3').split(',').map { |node| node.strip }.select { |node| node and node != ''}
 
+nano = read_bool_env 'NANO', 1
+compose = read_bool_env 'COMPOSE', 1
+compose = read_env 'COMPOSE', '1.11.2' if compose
+
 definitions = (1..nodes).map do |node_number|
   hostname = "#{hostname_prefix}#{node_number}"
   ip = leader_ip.dup
@@ -150,6 +154,14 @@ Vagrant.configure("2") do |config_all|
       
       if shared
         config.vm.synced_folder shared.to_s, "/home/core/share", id: "core", :nfs => true,  :mount_options   => ['nolock,vers=3,udp']
+      end
+      
+      if nano
+        config.vm.provision "shell", run: "always", inline: "which nano >/dev/null || echo \"installing nano\" && wget https://svn.ensisa.uha.fr/vagrant/opt-nano-bin.tar.gz 2>/dev/null && tar xzf opt-nano-bin.tar.gz && cp -r opt / && rm -rf opt"
+      end
+      
+      if compose
+        config.vm.provision "shell", run: "always", inline: "which docker-compose >/dev/null || echo \"installing docker-compose\" && mkdir -p /opt/bin && wget -O /opt/bin/docker-compose \"https://github.com/docker/compose/releases/download/#{compose}/docker-compose-Linux-x86_64\" 2>/dev/null"
       end
       
       if etcd_url
