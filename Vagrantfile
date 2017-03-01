@@ -133,7 +133,7 @@ Vagrant.configure("2") do |config_all|
         # Clearing unwanted gateways
         config.vm.provision "shell", run: "always",  inline: "ip route show | grep '^default' | sed 's;^.*\\sdev\\s*\\([a-z0-9]*\\)\\s*.*$;\\1;' | grep -v #{default_itf} | xargs -I ITF ip route del default dev ITF"
         # Making it sure a default route exists
-        config.vm.provision "shell", run: "always", inline: "ip route show | grep -q '^default' || dhclient #{default_itf}"
+        config.vm.provision "shell", run: "always", inline: "ip route show | grep -q '^default' || dhcpcd #{default_itf}"
       end
       unless ipv6
         # Disabling IPv6
@@ -192,10 +192,11 @@ EOF
 \# Checking whether a swarm already exists
 etcdctl ls | grep vagrant-swarm >/dev/null || etcdctl mkdir vagrant-swarm
 MANAGERS=$(etcdctl ls /vagrant-swarm | grep '_address$' | sed 's;^/vagrant-swarm/swarm_\\(.*\\)_address;\\1;')
+HOST_IP=$(ip -4 addr list #{internal_itf} |  grep -v secondary | grep inet | sed 's/.*inet\\s*\\([0-9.]*\\).*/\\1/')
 if [ -z "$MANAGERS" ]; then
   \# first node to appear: creating swarm (if not already)
   echo "initializing swarm";
-  docker swarm init --advertise-addr #{internal_itf} --listen-addr #{internal_itf};
+  docker swarm init --advertise-addr $HOST_IP --listen-addr $HOST_IP;
 elif [ "0" != $(docker node list 1>/dev/null 2>&1;echo $?) ]; then
   echo \"joining swarm as #{role}\"
   \# iterating over manager nodes to join
