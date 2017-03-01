@@ -4,6 +4,7 @@
 # WORK IN PROGRESS !!!
 # http://tech.paulcz.net/2016/01/running-ha-docker-swarm/
 # http://docs.master.dockerproject.org/engine/swarm/swarm-tutorial/create-swarm/
+# Adding kubernetes: https://github.com/coreos/coreos-kubernetes/blob/master/multi-node/vagrant/Vagrantfile
 
 def read_bool_env key, default_value = false
   key = key.to_s
@@ -181,7 +182,7 @@ EOF
         definition[:config_file] = config_file
       
         config.vm.provision :file, run: "always", :source => config_file, :destination => '/tmp/vagrantfile-user-data'
-        config.vm.provision :shell, run: "always", :inline => "sed -i -e \"s/\\$public_ipv4/$(ip -4 addr list #{internal_itf} | grep inet | sed 's/.*inet\\s*\\([0-9.]*\\).*/\\1/')/g\" /tmp/vagrantfile-user-data"
+        config.vm.provision :shell, run: "always", :inline => "sed -i -e \"s/\\$public_ipv4/$(ip -4 addr list #{internal_itf} |  grep -v secondary | grep inet | sed 's/.*inet\\s*\\([0-9.]*\\).*/\\1/')/g\" /tmp/vagrantfile-user-data"
         config.vm.provision :shell, run: "always", :inline => 'mv /tmp/vagrantfile-user-data /var/lib/coreos-vagrant/', :privileged => true
         
         if swarm
