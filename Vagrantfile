@@ -19,7 +19,7 @@ def read_env key, default_value = nil, false_value = false
   key = key.to_s
   if ENV.include?(key)
     val = ENV[key].strip
-    if  (['off', 'false', '0']).include? val
+    if  (['no', 'off', 'false', '0']).include? val
       return false_value
     else
       return val
@@ -143,9 +143,11 @@ Vagrant.configure("2") do |config_all|
       
       # Avoid getting multiple IPs from DHCP
       # see https://coreos.com/os/docs/latest/network-config-with-networkd.html
-      config.vm.provision :shell, :name => "dhcp optimization", :inline => <<-EOF
+      config.vm.provision :shell, :name => "public interface setup", :inline => <<-EOF
 cat > /var/lib/coreos-vagrant/dhcp <<EOL
 \#cloud-config
+  
+hostname: #{hostname}
 
 coreos:
   units:
@@ -158,7 +160,12 @@ coreos:
         Name=#{public_itf}
 
         [Network]
-        DHCP=on
+        DHCP=yes
+        
+        [DHCP]
+        UseMTU=true
+        UseDomains=true
+        ClientIdentifier=mac
     - name: down-interfaces.service
       command: start
       content: |
@@ -211,15 +218,12 @@ EOF
         config.vm.synced_folder shared.to_s, "/home/core/share", id: "core", :nfs => true,  :mount_options   => ['nolock,vers=3,udp']
       end
       
-      if node_number == 1
-        if nano
-          config.vm.provision :shell, :run  => "always", :name => "checking for nano", :inline => "which nano >/dev/null || ( echo \"installing nano\" && wget https://svn.ensisa.uha.fr/vagrant/opt-nano-bin.tar.gz 2>/dev/null && tar xzf opt-nano-bin.tar.gz && cp -r opt / && rm -rf opt )"
-        end
-        
-        if compose
-          config.vm.provision :shell, :run => "always", :name => "checking for docker-compose", :inline => "which docker-compose >/dev/null || ( echo \"installing docker-compose\" && mkdir -p /opt/bin && wget -O /opt/bin/docker-compose \"https://github.com/docker/compose/releases/download/#{compose}/docker-compose-Linux-x86_64\" 2>/dev/null && chmod a+x /opt/bin/docker-compose )"
-        end
-        
+      if nano
+        config.vm.provision :shell, :run  => "always", :name => "checking for nano", :inline => "which nano >/dev/null || ( echo \"installing nano\" && wget https://svn.ensisa.uha.fr/vagrant/opt-nano-bin.tar.gz 2>/dev/null && tar xzf opt-nano-bin.tar.gz && cp -r opt / && rm -rf opt )"
+      end
+      
+      if compose && node_number == 1
+        config.vm.provision :shell, :run => "always", :name => "checking for docker-compose", :inline => "which docker-compose >/dev/null || ( echo \"installing docker-compose\" && mkdir -p /opt/bin && wget -O /opt/bin/docker-compose \"https://github.com/docker/compose/releases/download/#{compose}/docker-compose-Linux-x86_64\" 2>/dev/null && chmod a+x /opt/bin/docker-compose )"
       end
       
       if etcd_url
@@ -230,19 +234,21 @@ EOF
         end
       
         config.vm.provision :shell, run: "always", :name => "configuring etcd", :inline => <<-EOF
-n=0
-until [ $n -ge 5 ]; do
-  IP=$(ip -4 addr list #{internal_itf} |  grep -v secondary | grep inet | sed 's/.*inet\\s*\\([0-9.]*\\).*/\\1/' | head -n 1)
-  [[ $IP =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$  ]] && break
-  n=$[$n+1]
-  sleep 2
-done
-if [[ $IP =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$  ]]; then
-  echo "Found ip: '$IP' from interface #{internal_itf}"
-  cat > /var/lib/coreos-vagrant/etcd <<EOL
+if [ ! -f /var/lib/coreos-vagrant/etcd ]; then
+  echo -n "Checking ip address "
+  n=0
+  until [ $n -ge 5 ]; do
+    IP=$(ip -4 addr list #{internal_itf} |  grep -v secondary | grep inet | sed 's/.*inet\\s*\\([0-9.]*\\).*/\\1/' | head -n 1)
+    [[ $IP =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$  ]] && break
+    echo -n "."
+    n=$[$n+1]
+    sleep 2
+  done
+  if [[ $IP =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$  ]]; then
+    echo " found '$IP'"
+    cat > /var/lib/coreos-vagrant/etcd <<EOL
 \#cloud-config
 
-hostname: #{hostname}
 coreos:
   etcd2:
     discovery: #{etcd_url}
@@ -254,19 +260,17 @@ coreos:
     - name: etcd2.service
       command: start
 EOL
-  coreos-cloudinit --from-file=/var/lib/coreos-vagrant/etcd 1>etcd-application.log 2>&1 &
-else
-  echo "Cannot determine IP, please issue a 'vagrant up #{hostname}' again}"
+    coreos-cloudinit --from-file=/var/lib/coreos-vagrant/etcd 1>etcd-application.log 2>&1 &
+  else
+    echo "Cannot determine IP, please issue a 'vagrant up #{hostname}' again}"
+  fi
 fi
 EOF
-#        config.vm.provision :file, run: "always", :source => config_file, :destination => '/tmp/vagrantfile-user-data'
-#        config.vm.provision :shell, run: "always", :name => "adapting etcd config file", :inline => "sed -i -e \"s/\\$public_ipv4/$(ip -4 addr list #{internal_itf} |  grep -v secondary | grep inet | sed 's/.*inet\\s*\\([0-9.]*\\).*/\\1/' | head -n 1)/g\" /tmp/vagrantfile-user-data"
-#        config.vm.provision :shell, run: "always", :name  => "applying etcd config file", :inline => "if [[ $(ip -4 addr list #{internal_itf} |  grep -v secondary | grep inet | sed 's/.*inet\\s*\\([0-9.]*\\).*/\\1/' | head -n 1) =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then mv /tmp/vagrantfile-user-data /var/lib/coreos-vagrant/; else echo 'Cannot start ETCD (did not find any ip adress), please issue a vagrant up #{hostname} again'; fi", :privileged => true
         
         if swarm
           
           role = if node_number == 1 or swarm_managers.include? hostname then 'manager' else 'worker' end
-          config.vm.provision :shell, :name => "checking swarm", :inline => <<-EOF
+          config.vm.provision :shell, run: "always", :name => "checking swarm", :inline => <<-EOF
 \# Checking whether a swarm already exists
 etcdctl ls | grep vagrant-swarm >/dev/null || etcdctl mkdir vagrant-swarm
 MANAGERS=$(etcdctl ls /vagrant-swarm | grep '_address$' | sed 's;^/vagrant-swarm/swarm_\\(.*\\)_address;\\1;')

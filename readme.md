@@ -7,8 +7,8 @@ Both a public (DHCP assigned) and a private (only visible on the node) network i
 ## Requirements ##
 
 This script was tested against Vagrant > 1.9 and Virtualbox > 5.
-It shoud be OK on Linux (tested on 4.9), MacOS X (tested on 10.11), Windows (tested on 8 and 10). It might also work on other hosts, please report other working stations...
-In case you use Windows, you'll need an ssh client, such as the ones you get when installing git, Cygwin or MinGW64.
+It shoud be OK on Linux (tested on 4.9), MacOS X (tested on 10.11 and 10.12), Windows (tested on 8 and 10). It might also work on other hosts, please report other working stations...
+In case you use Windows, you'll need an ssh client, such as the ones you get when installing git, Cygwin or MinGW64. Otherwise, have a look at the [PuTTY Vagrant plugin](https://github.com/nickryand/vagrant-multi-putty)
 
 ## Usage ##
 
@@ -16,24 +16,24 @@ First, clone the repo
 `git clone https://github.com/fondemen/coreos-swarm-vagrant.git ; cd coreos-swarm-vagrant`
 
 To initialize a cluster, just issue `vagrant up`.
-3 CoreOS nodes are set up (*docker-1*, *docker-2*, and *docker-3*) and form an etcd cluster.
+3 CoreOS nodes are set up (*docker-01*, *docker-O2*, and *docker-03*) and form an etcd2 cluster.
 An etcd token url is automatically requested from discovery.etcd.io. The token url is stored to *etcd_token_url* file so that new nodes can be fired up and allowed to join.
 
 To start Swarm, then issue
 ```
 export SWARM=on
-vagrant provision
+vagrant up
 ```
 or on windows cmd
 ```
 set SWARM=on
-vagrant provision
+vagrant up
 ```
 The previous three node now form a Docker Swarm cluster.
-This can't be done during the `vagrant up` phase as Swarm leader ip  and join token are shared using etcd (using /vagrant-swarm/swarm_docker-1_adress and /vagrant-swarm/swarm_token_worker keys, respectively). Indeed, etcd needs at least 3 nodes up and running to work which is the case only at the end of the `vagrant up` phase.
+This can't be done during the first `vagrant up` phase as Swarm leader ip  and join token are shared using etcd (using /vagrant-swarm/swarm_docker-1_adress and /vagrant-swarm/swarm_token_worker keys, respectively). Indeed, etcd needs at least 3 nodes up and running to work which is the case only at the end of the first `vagrant up` phase.
 
 Now you can connect your cluster by 
-`vagrant ssh docker-1` (or any other docker-X node).
+`vagrant ssh docker-01` (or any other docker-XX node).
 It's now time to play with Docker Swarm.
 
 ## Setting up a new node on the same VirtualBox host ##
@@ -71,11 +71,11 @@ The ETCD_TOKEN_URL is also stored on etcd_token file on the new host making the 
 
 ## Managers ##
 
-For swarm to be highly available (i.e. survive the loss of the leader node), one needs to add manager nodes. Default manager nodes are docker-1, docker-2 and docker-3.
+For swarm to be highly available (i.e. survive the loss of the leader node), one needs to add manager nodes. Default manager nodes is docker-01 alone.
 You can change them using the SWARM_MANAGERS environment variable, e.g. `SWARM=ON NODES=8 SWARM_MANAGERS=docker-1,docker-3,docker-5 vagrant provision`.
 
 ## Destroying cluster ##
 
-Simply issue a `vagrant destroy && rm etcd_token_url && rm user-data-*` on each Vagrant host.
+Simply issue a `vagrant destroy && rm etcd_token_url` on each Vagrant host.
 
 etcd token must be re-created for a new cluster, that's why the *etcd_token_url* file has to be deleted.
