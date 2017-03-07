@@ -111,6 +111,13 @@ else
   etcd_url = false
 end
 
+if public
+  require 'socket'
+  vagrant_host = Socket.gethostname || Socket.ip_address_list.find { |ai| ai.ipv4? && !ai.ipv4_loopback? }.ip_address
+  puts "this host is #{vagrant_host}"
+  require 'digest/md5' # used later for machine id generation so that dhcp returns the same IP
+end
+
 Vagrant.configure("2") do |config_all|
   # always use Vagrants insecure key
   config_all.ssh.insert_key = false
@@ -140,6 +147,19 @@ Vagrant.configure("2") do |config_all|
       begin config.vm.box_url = box_url if box_url rescue nil end
       
       config.vm.hostname = hostname
+      
+      config.vm.boot_timeout = 300
+      
+      config.vm.provider :virtualbox do |vb, override|
+        vb.memory = memory
+        vb.cpus = cpus
+        vb.customize [
+          'modifyvm', :id,
+          '--name', hostname,
+          '--cpuexecutioncap', '100',
+          '--paravirtprovider', 'kvm',
+        ]
+      end
 
       if public
         options = {}
@@ -147,6 +167,16 @@ Vagrant.configure("2") do |config_all|
         options[:bridge] = host_itf if host_itf
         options[:auto_config] = false
         config.vm.network "public_network", **options
+
+        machine_id = (Digest::MD5.hexdigest "#{hostname} on #{vagrant_host}").upcase
+        machine_mac = "#{machine_id[1, 2]}:#{machine_id[3, 2]}:#{machine_id[5, 2]}:#{machine_id[7, 2]}:#{machine_id[9, 2]}:#{machine_id[11, 2]}"
+      
+        config.vm.provider :virtualbox do |vb, override|
+          vb.customize [
+            'modifyvm', :id,
+            '--macaddress2', "#{machine_mac.delete ':'}",
+          ]
+        end
       
         # Avoid getting multiple IPs from DHCP
         # see https://coreos.com/os/docs/latest/network-config-with-networkd.html
@@ -165,6 +195,9 @@ coreos:
       content: |
         [Match]
         Name=#{public_itf}
+
+        [Link]
+        MACAddress=#{machine_mac}
 
         [Network]
         DHCP=yes
@@ -189,19 +222,6 @@ EOF
       
       if private
         config.vm.network :private_network, ip: ip
-      end
-      
-      config.vm.boot_timeout = 300
-      
-      config.vm.provider :virtualbox do |vb, override|
-        vb.memory = memory
-        vb.cpus = cpus
-        vb.customize [
-          'modifyvm', :id,
-          '--name', hostname,
-          '--cpuexecutioncap', '100',
-          '--paravirtprovider', 'kvm',
-        ]
       end
   
       # Network stuff
