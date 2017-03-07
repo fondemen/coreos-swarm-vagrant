@@ -68,6 +68,12 @@ internal_itf = case ENV['INTERNAL_ITF']
 
 shared=read_env 'SHARED', false
 
+etcd_size = read_env 'ETCD_SIZE', 3 # 3 is the default discovery.etcd.io value
+if etcd_size
+  etcd_size = etcd_size.to_i
+  raise "Not enough servers configured: stated #{nodes} nodes while requested #{etcd_size} etcd nodes" if etcd_size > nodes
+end
+
 etcd_url = read_env 'ETCD_TOKEN_URL', true
 raise "ETCD_TOKEN_URL should be an url such as https://discovery.etcd.io/XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX unlike #{etcd_url} ; ignore this parameter to generate one for a new cluster" if etcd_url.is_a? String and not etcd_url.start_with? 'https://discovery.etcd.io/'
 etcd_url = false unless read_bool_env 'ETCD', true
@@ -100,7 +106,8 @@ end
 if etcd_url and not etcd_url.kind_of?(String)
   require 'open-uri'
   puts 'Requesting a brand new etcd token'
-  etcd_url = URI.parse("https://discovery.etcd.io/new").read
+  etcd_size_rq = if etcd_size then "?size=#{etcd_size.to_i}" else '' end
+  etcd_url = URI.parse("https://discovery.etcd.io/new#{etcd_size_rq}").read
 end
 if etcd_url and etcd_url.kind_of?(String)
   # Storing found token
