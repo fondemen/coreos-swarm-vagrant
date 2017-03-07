@@ -45,19 +45,25 @@ box = "coreos-#{coreos_canal}"
 #box_url = 'https://svn.ensisa.uha.fr/vagrant/coreos_production_vagrant.json'
 box_url = "https://storage.googleapis.com/#{coreos_canal}.release.core-os.net/amd64-usr/current/coreos_production_vagrant.json"
 # see https://coreos.com/blog/coreos-clustering-with-vagrant.html
+
+public = read_bool_env 'PUBLIC', true
+private = read_bool_env 'PRIVATE', true
+
 public_itf = 'eth1' # depends on chosen box and order of interface declaration
-private_itf = 'eth2' # depends on chosen box
+private_itf = if public then 'eth2' else 'eth1' end # depends on chosen box
 ipv6 = read_bool_env 'IPV6' # ipv6 is disabled by default ; use IPV6=on for avoiding this (to be set at node creation only)
-default_itf = read_env 'DEFAULT_PUBLIC_ITF', public_itf # default gateway
+default_itf = read_env 'DEFAULT_PUBLIC_ITF', if public then public_itf else private_itf end # default gateway
 internal_itf = case ENV['INTERNAL_ITF']
   when 'public'
+    raise 'Cannot use public interface in case it is disabled ; state PUBLIC=yes' unless public
     public_itf
   when 'private'
+    raise 'Cannot use private interface in case it is disabled ; state PRIVATE=yes' unless private
     private_itf
   when String
     ENV['ETCD_ITF'].strip
   else
-    public_itf
+    if public then public_itf else private_itf end
   end # interface used for internal node communication by etcd and swarm (i.e. should it be public or private ?)
 
 shared=read_env 'SHARED', false
@@ -134,16 +140,17 @@ Vagrant.configure("2") do |config_all|
       begin config.vm.box_url = box_url if box_url rescue nil end
       
       config.vm.hostname = hostname
-      options = {}
-      # options[:use_dhcp_assigned_default_route] = true
-      options[:bridge] = host_itf if host_itf
-      options[:auto_config] = false
-      config.vm.network "public_network", **options
-      config.vm.network "private_network", ip: ip
+
+      if public
+        options = {}
+        # options[:use_dhcp_assigned_default_route] = true
+        options[:bridge] = host_itf if host_itf
+        options[:auto_config] = false
+        config.vm.network "public_network", **options
       
-      # Avoid getting multiple IPs from DHCP
-      # see https://coreos.com/os/docs/latest/network-config-with-networkd.html
-      config.vm.provision :shell, :name => "public interface setup", :inline => <<-EOF
+        # Avoid getting multiple IPs from DHCP
+        # see https://coreos.com/os/docs/latest/network-config-with-networkd.html
+        config.vm.provision :shell, :name => "public interface setup", :inline => <<-EOF
 cat > /var/lib/coreos-vagrant/dhcp <<EOL
 \#cloud-config
   
@@ -178,6 +185,11 @@ coreos:
 EOL
 coreos-cloudinit --from-file=/var/lib/coreos-vagrant/dhcp 1>dhcp-opt-application.log 2>&1
 EOF
+      end
+      
+      if private
+        config.vm.network :private_network, ip: ip
+      end
       
       config.vm.boot_timeout = 300
       
