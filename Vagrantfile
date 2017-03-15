@@ -176,6 +176,7 @@ Vagrant.configure("2") do |config_all|
         config.vm.network "public_network", **options
 
         machine_id = (Digest::MD5.hexdigest "#{hostname} on #{vagrant_host}").upcase
+        machine_id[2] = (machine_id[2].to_i(16) & 0xFE).to_s(16).upcase # generated MAC must not be multicast
         machine_mac = "#{machine_id[1, 2]}:#{machine_id[3, 2]}:#{machine_id[5, 2]}:#{machine_id[7, 2]}:#{machine_id[9, 2]}:#{machine_id[11, 2]}"
       
         config.vm.provider :virtualbox do |vb, override|
