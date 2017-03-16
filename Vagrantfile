@@ -72,6 +72,8 @@ docker_default_port = 2375
 docker_port = read_env 'DOCKER_PORT', docker_default_port.to_s
 docker_port = if docker_port then if docker_port.to_i.to_s == docker_port then docker_port.to_i else docker_default_port end else false end
 
+docker_experimental = read_bool_env 'DOCKER_EXPERMIENTAL', true
+
 etcd_size = read_env 'ETCD_SIZE', 3 # 3 is the default discovery.etcd.io value
 if etcd_size
   etcd_size = etcd_size.to_i
@@ -266,6 +268,29 @@ EOF
       
       if compose && node_number == 1
         config.vm.provision :shell, :run => "always", :name => "checking for docker-compose", :inline => "which docker-compose >/dev/null || ( echo \"installing docker-compose\" && mkdir -p /opt/bin && wget -O /opt/bin/docker-compose \"https://github.com/docker/compose/releases/download/#{compose}/docker-compose-Linux-x86_64\" 2>/dev/null && chmod a+x /opt/bin/docker-compose )"
+      end
+
+      if docker_experimental
+        config.vm.provision :shell, run: "always", :name => "enabling Docker expermental features", :inline => <<-EOF
+CLOUDINIT_FILE=/var/lib/coreos-vagrant/dockerxp
+if [ ! -f "${CLOUDINIT_FILE}" ]; then
+  echo "Enabling Docker experimental features"
+  cat > $CLOUDINIT_FILE <<EOL
+\#cloud-config
+
+coreos:
+  units:
+    - name: docker.service
+      drop-ins:
+        - name: "50-experimental.conf"
+          content: |
+            [Service]
+            Environment=DOCKER_OPTS='--experimental=true'
+EOL
+  coreos-cloudinit --from-file=$CLOUDINIT_FILE 1>dockerxp-application.log 2>&1 &
+  systemctl restart docker
+fi
+EOF
       end
 
       if node_number == 1
