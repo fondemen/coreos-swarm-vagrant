@@ -321,6 +321,7 @@ if [ ! -f /var/lib/coreos-vagrant/etcd ]; then
 coreos:
   etcd2:
     discovery: #{etcd_url}
+    name: #{hostname}
     advertise-client-urls: http://$IP:2379,http://$IP:4001
     initial-advertise-peer-urls: http://$IP:2380
     listen-client-urls: http://0.0.0.0:2379,http://0.0.0.0:4001
