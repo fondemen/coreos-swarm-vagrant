@@ -322,9 +322,9 @@ coreos:
   etcd2:
     discovery: #{etcd_url}
     name: #{hostname}
-    advertise-client-urls: http://$IP:2379,http://$IP:4001
+    advertise-client-urls: http://$IP:2379
     initial-advertise-peer-urls: http://$IP:2380
-    listen-client-urls: http://0.0.0.0:2379,http://0.0.0.0:4001
+    listen-client-urls: http://0.0.0.0:2379
     listen-peer-urls: http://$IP:2380
   units:
     - name: etcd2.service
