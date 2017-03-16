@@ -15,7 +15,7 @@ def read_bool_env key, default_value = false
   end
 end
 
-def read_env key, default_value = nil, false_value = false
+def read_env key, default_value = nil, false_value = false, true_value = true
   key = key.to_s
   if ENV.include?(key)
     val = ENV[key].strip
@@ -67,6 +67,10 @@ internal_itf = case ENV['INTERNAL_ITF']
   end # interface used for internal node communication by etcd and swarm (i.e. should it be public or private ?)
 
 shared=read_env 'SHARED', false
+
+docker_default_port = 2375
+docker_port = read_env 'DOCKER_PORT', true
+docker_port = if docker_port then if docker_port.to_i.to_s == docker_port then docker_port.to_i else docker_default_port end else false end
 
 etcd_size = read_env 'ETCD_SIZE', 3 # 3 is the default discovery.etcd.io value
 if etcd_size
@@ -228,9 +232,7 @@ coreos-cloudinit --from-file=/var/lib/coreos-vagrant/dhcp 1>dhcp-opt-application
 EOF
       end
       
-      if private
-        config.vm.network :private_network, ip: ip
-      end
+      config.vm.network :private_network, ip: ip
   
       # Network stuff
 #      if default_itf
@@ -264,6 +266,33 @@ EOF
       
       if compose && node_number == 1
         config.vm.provision :shell, :run => "always", :name => "checking for docker-compose", :inline => "which docker-compose >/dev/null || ( echo \"installing docker-compose\" && mkdir -p /opt/bin && wget -O /opt/bin/docker-compose \"https://github.com/docker/compose/releases/download/#{compose}/docker-compose-Linux-x86_64\" 2>/dev/null && chmod a+x /opt/bin/docker-compose )"
+      end
+
+      if node_number == 1
+        # Making Docker remotely available from the host machine
+        config.vm.provision :shell, run: "always", :name => "configuring etcd", :inline => <<-EOF
+REMOTE_DOCKER_CONF_FILE=/etc/systemd/system/docker-tcp.socket
+if [ ! -f "${REMOTE_DOCKER_CONF_FILE}" ]; then
+    echo "Enabling docker remote port on #{hostname} ; export DOCKER_HOST=tcp://#{ip}:#{docker_port} to use it with your local Docker client"
+    # see https://coreos.com/os/docs/latest/customizing-docker.html
+    cat > $REMOTE_DOCKER_CONF_FILE <<EOL
+[Unit]
+Description=Docker Socket for the API
+
+[Socket]
+ListenStream=#{ip}:#{docker_port}
+BindIPv6Only=both
+Service=docker.service
+
+[Install]
+WantedBy=sockets.target
+EOL
+    systemctl enable docker-tcp.socket
+    systemctl stop docker
+    systemctl start docker-tcp.socket
+    systemctl start docker
+fi
+EOF
       end
       
       if etcd_url

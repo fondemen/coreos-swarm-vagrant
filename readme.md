@@ -79,3 +79,15 @@ You can change them using the SWARM_MANAGERS environment variable, e.g. `SWARM=O
 Simply issue a `vagrant destroy && rm etcd_token_url` on each Vagrant host.
 
 etcd token must be re-created for a new cluster, that's why the *etcd_token_url* file has to be deleted.
+
+## Docker remote access ##
+
+If you have the docker client installed, you can control you Docker cluster from the host machine running docker-01 VM.
+To do so:
+```
+export DOCKER_PORT=2375
+vagrant up docker-01
+
+export DOCKER_HOST=192.168.2.100:2375 # to tell your docker client how to connect (192.168.2.100 is the private IP of your machine)
+docker info | grep ^Name\\s*:\\s* # to test whether the docker client actually connects docker-01
+```
