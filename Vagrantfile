@@ -69,7 +69,7 @@ internal_itf = case ENV['INTERNAL_ITF']
 shared=read_env 'SHARED', false
 
 docker_default_port = 2375
-docker_port = read_env 'DOCKER_PORT', true
+docker_port = read_env 'DOCKER_PORT', docker_default_port.to_s
 docker_port = if docker_port then if docker_port.to_i.to_s == docker_port then docker_port.to_i else docker_default_port end else false end
 
 etcd_size = read_env 'ETCD_SIZE', 3 # 3 is the default discovery.etcd.io value
