@@ -382,7 +382,7 @@ elif [ "0" != $(docker node list 1>/dev/null 2>&1;echo $?) ]; then
 fi
 if [ "#{role}" == "manager" ]; then
   \# Storing join token in etcd
-  etcdctl get /vagrant-swarm/swarm_#{hostname}_address 1>/dev/null 2>&1 || etcdctl set /vagrant-swarm/swarm_#{hostname}_address "$HOST_IP"
+  etcdctl get /vagrant-swarm/swarm_#{hostname}_address 1>/dev/null 2>&1 || etcdctl set /vagrant-swarm/swarm_#{hostname}_address $(docker swarm join-token worker | grep 'docker swarm join' | grep -o '[0-9]*\\.[0-9]*\\.[0-9]*\\.[0-9]*:[0-9]*$')
   etcdctl get /vagrant-swarm/swarm_#{hostname}_token_worker 1>/dev/null 2>&1 || etcdctl set /vagrant-swarm/swarm_#{hostname}_token_worker $(docker swarm join-token -q worker)
   etcdctl get /vagrant-swarm/swarm_#{hostname}_token_manager 1>/dev/null 2>&1 || etcdctl set /vagrant-swarm/swarm_#{hostname}_token_manager $(docker swarm join-token -q manager)
 fi
