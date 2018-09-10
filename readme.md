@@ -42,13 +42,13 @@ To add a fourth node:
 ```
 export NODES=4
 export SWARM=on
-vagrant up docker-4
+vagrant up docker-04
 ```
 or on Windows cmd
 ```
 set NODES=4
 set SWARM=on
-vagrant up docker-4
+vagrant up docker-04
 ```
 As etcd should be up, there is no longer need for the two phase `vagrant up` then `vagrant provision` for this node to join the Swarm.
 

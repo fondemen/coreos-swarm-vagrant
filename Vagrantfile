@@ -4,7 +4,7 @@
 # WORK IN PROGRESS !!!
 # http://tech.paulcz.net/2016/01/running-ha-docker-swarm/
 # http://docs.master.dockerproject.org/engine/swarm/swarm-tutorial/create-swarm/
-# Adding kubernetes: https://github.com/coreos/coreos-kubernetes/blob/master/multi-node/vagrant/Vagrantfile
+# Adding kubernetes: https://github.com/coreos/coreos-kubernetes/blob/master/multi-node/vagrant/Vagrantfile!
 
 def read_bool_env key, default_value = false
   key = key.to_s
@@ -40,9 +40,9 @@ hostname_prefix = read_env 'PREFIX', 'docker-'
 nodes = (read_env 'NODES', 3).to_i
 raise "There should be at least one node and at most 255 while prescribed #{nodes} ; you can set up node number like this: NODES=2 vagrant up" unless nodes.is_a? Integer and nodes >= 1 and nodes <= 255
 
-coreos_canal = (read_env 'COREOS', 'alpha').downcase # could be 'beta', 'stable' or 'uha' though stable has a docker 1.11 version at the time of writing (so no SWARM mode available)
-box = "coreos-#{coreos_canal == 'uha' ? 'alpha' : coreos_canal}"
-box_url = if coreos_canal == 'uha' then 'https://svn.ensisa.uha.fr/vagrant/coreos_production_vagrant.json' else "https://storage.googleapis.com/#{coreos_canal}.release.core-os.net/amd64-usr/current/coreos_production_vagrant.json" end
+coreos_canal = (read_env 'COREOS', 'alpha').downcase # could be 'beta', 'stable'
+box = "coreos-#{coreos_canal}"
+box_url = "https://#{coreos_canal}.release.core-os.net/amd64-usr/current/coreos_production_vagrant_virtualbox.json" #"https://storage.googleapis.com/#{coreos_canal}.release.core-os.net/amd64-usr/current/coreos_production_vagrant.json" end
 # see https://coreos.com/blog/coreos-clustering-with-vagrant.html
 
 public = read_bool_env 'PUBLIC', true
@@ -73,6 +73,8 @@ docker_port = if docker_port then if docker_port.to_i.to_s == docker_port then d
 
 docker_experimental = read_bool_env 'DOCKER_EXPERMIENTAL', true
 
+etcd = read_env 'ETCD', "3.3.9"
+
 etcd_size = read_env 'ETCD_SIZE', 3 # 3 is the default discovery.etcd.io value
 if etcd_size
   etcd_size = etcd_size.to_i
@@ -89,7 +91,7 @@ swarm_managers = (ENV['SWARM_MANAGERS'] || 'docker-2,docker-3').split(',').map {
 
 nano = read_bool_env 'NANO', 1
 compose = read_bool_env 'COMPOSE', 1
-compose = read_env 'COMPOSE', '1.18.0' if compose
+compose = read_env 'COMPOSE', '1.22.0' if compose
 
 definitions = (1..nodes).map do |node_number|
   hostname = "%s%02d" % [hostname_prefix, node_number]
@@ -146,6 +148,9 @@ Vagrant.configure("2") do |config_all|
   if Vagrant.has_plugin?("vagrant-vbguest") then
     config_all.vbguest.auto_update = false
   end
+
+  root_hostname = definitions[0][:hostname]
+  root_ip = definitions[0][:ip]
   
   (1..nodes).each do |node_number|
     
@@ -262,7 +267,7 @@ EOF
       end
       
       if nano
-        config.vm.provision :shell, :run  => "always", :name => "checking for nano", :inline => "which nano >/dev/null || ( echo \"installing nano\" && wget https://svn.ensisa.uha.fr/vagrant/opt-nano-bin.tar.gz 2>/dev/null && tar xzf opt-nano-bin.tar.gz && cp -r opt / && rm -rf opt )"
+        config.vm.provision :shell, :run  => "always", :name => "checking for nano", :inline => "which nano >/dev/null || ( echo \"installing nano\" && wget https://svn.ensisa.uha.fr/vagrant/opt-nano-bin.tar.gz 2>/dev/null && tar xzf opt-nano-bin.tar.gz && cp -r opt / && rm -rf opt && echo \"TERM=vt100\" >> /etc/environment)"
       end
       
       if compose && node_number == 1
@@ -338,22 +343,38 @@ if [ ! -f /var/lib/coreos-vagrant/etcd ]; then
     sleep 2
   done
   if [[ $IP =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$  ]]; then
-    echo " found '$IP'"
+    echo " found ip '$IP'"
+
     cat > /var/lib/coreos-vagrant/etcd <<EOL
 \#cloud-config
 
 coreos:
-  etcd2:
+  etcd:
     discovery: #{etcd_url}
+    version: #{etcd}
     name: #{hostname}
     advertise-client-urls: http://$IP:2379
     initial-advertise-peer-urls: http://$IP:2380
     listen-client-urls: http://0.0.0.0:2379
     listen-peer-urls: http://$IP:2380
+    initial_cluster: #{root_hostname}=http://#{root_ip}:2380
   units:
-    - name: etcd2.service
+    - name: etcd-member.service
       command: start
+      drop-ins:
+        - name: 20-clct-etcd-member.conf
+          content: |
+            [Service]
+            Environment="ETCD_IMAGE_TAG=v#{etcd}"
+            Environment="ETCD_ADVERTISE_CLIENT_URLS=http://$IP:2379"
+            Environment="ETCD_DISCOVERY=#{etcd_url}"
+            Environment="ETCD_INITIAL_ADVERTISE_PEER_URLS=http://$IP:2380"
+            Environment="ETCD_LISTEN_CLIENT_URLS=http://0.0.0.0:2379"
+            Environment="ETCD_LISTEN_PEER_URLS=http://$IP:2380"
+            Environment="ETCD_NAME=#{hostname}"
 EOL
+    #export ETCD_OPTS="--name #{hostname} --listen-peer-urls http://$IP:2380 --listen-client-urls http://0.0.0.0:2379 --initial-advertise-peer-urls http://$IP:2380 --advertise-client-urls http://$IP:2379 --discovery #{etcd_url}"
+    #echo "ETCD_OPTS=$ETCD_OPTS" >> /etc/environment
     coreos-cloudinit --from-file=/var/lib/coreos-vagrant/etcd 1>etcd-application.log 2>&1 &
   else
     echo "Cannot determine IP, please issue a 'vagrant up #{hostname}' again}"
