@@ -6,6 +6,21 @@
 # http://docs.master.dockerproject.org/engine/swarm/swarm-tutorial/create-swarm/
 # Adding kubernetes: https://github.com/coreos/coreos-kubernetes/blob/master/multi-node/vagrant/Vagrantfile!
 
+Vagrant.require_version ">= 1.6.0"
+
+# Make sure the vagrant-ignition plugin is installed
+required_plugins = %w(vagrant-ignition)
+
+plugins_to_install = required_plugins.select { |plugin| not Vagrant.has_plugin? plugin }
+if not plugins_to_install.empty?
+  puts "Installing plugins: #{plugins_to_install.join(' ')}"
+  if system "vagrant plugin install #{plugins_to_install.join(' ')}"
+    exec "vagrant #{ARGV.join(' ')}"
+  else
+    abort "Installation of one or more plugins has failed. Aborting."
+  end
+end
+
 def read_bool_env key, default_value = false
   key = key.to_s
   if ENV.include?(key)
@@ -42,8 +57,7 @@ raise "There should be at least one node and at most 255 while prescribed #{node
 
 coreos_canal = (read_env 'COREOS', 'alpha').downcase # could be 'beta', 'stable'
 box = "coreos-#{coreos_canal}"
-box_url = "https://#{coreos_canal}.release.core-os.net/amd64-usr/current/coreos_production_vagrant_virtualbox.json" #"https://storage.googleapis.com/#{coreos_canal}.release.core-os.net/amd64-usr/current/coreos_production_vagrant.json" end
-# see https://coreos.com/blog/coreos-clustering-with-vagrant.html
+box_url = "https://#{$update_channel}.release.core-os.net/amd64-usr/current/coreos_production_vagrant_virtualbox.json"
 
 public = read_bool_env 'PUBLIC', true
 private = read_bool_env 'PRIVATE', true
@@ -143,6 +157,8 @@ Vagrant.configure("2") do |config_all|
     # in CoreOS, so tell Vagrant that so it can be smarter.
     vb.check_guest_additions = false
     vb.functional_vboxsf     = false
+    # enable ignition (this is always done on virtualbox as this is how the ssh key is added to the system)
+    config_all.ignition.enabled = true
   end
 
   if Vagrant.has_plugin?("vagrant-vbguest") then
@@ -176,6 +192,7 @@ Vagrant.configure("2") do |config_all|
           '--cpuexecutioncap', '100',
           '--paravirtprovider', 'kvm',
         ]
+	config.ignition.config_obj = vb
       end
 
       if public
@@ -199,7 +216,7 @@ Vagrant.configure("2") do |config_all|
         # Avoid getting multiple IPs from DHCP
         # see https://coreos.com/os/docs/latest/network-config-with-networkd.html
         config.vm.provision :shell, :name => "public interface setup", :inline => <<-EOF
-cat > /var/lib/coreos-vagrant/dhcp <<EOL
+cat > /home/core/dhcp <<EOL
 \#cloud-config
   
 hostname: #{hostname}
@@ -234,11 +251,12 @@ coreos:
     - name: systemd-networkd.service
       command: restart
 EOL
-coreos-cloudinit --from-file=/var/lib/coreos-vagrant/dhcp 1>dhcp-opt-application.log 2>&1
+coreos-cloudinit --from-file=/home/core/dhcp 1>dhcp-opt-application.log 2>&1
 EOF
       end
       
       config.vm.network :private_network, ip: ip
+      config.ignition.ip = ip
   
       # Network stuff
 #      if default_itf
@@ -276,7 +294,7 @@ EOF
 
       if docker_experimental
         config.vm.provision :shell, run: "always", :name => "enabling Docker expermental features", :inline => <<-EOF
-CLOUDINIT_FILE=/var/lib/coreos-vagrant/dockerxp
+CLOUDINIT_FILE=/home/core/dockerxp
 if [ ! -f "${CLOUDINIT_FILE}" ]; then
   echo "Enabling Docker experimental features"
   cat > $CLOUDINIT_FILE <<EOL
@@ -295,6 +313,13 @@ EOL
   systemctl restart docker
 fi
 EOF
+      end
+
+      config.vm.provider :virtualbox do |vb|
+        config.ignition.hostname = hostname
+        config.ignition.drive_name = "config" + node_number.to_s
+        # when the ignition config doesn't exist, the plugin automatically generates a very basic Ignition with the ssh key
+        # and previously specified options (ip and hostname).
       end
 
       if node_number == 1
@@ -332,7 +357,7 @@ EOF
         end
       
         config.vm.provision :shell, run: "always", :name => "configuring etcd", :inline => <<-EOF
-if [ ! -f /var/lib/coreos-vagrant/etcd ]; then
+if [ ! -f /home/core/etcd ]; then
   echo -n "Checking ip address "
   n=0
   until [ $n -ge 5 ]; do
@@ -345,7 +370,7 @@ if [ ! -f /var/lib/coreos-vagrant/etcd ]; then
   if [[ $IP =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$  ]]; then
     echo " found ip '$IP'"
 
-    cat > /var/lib/coreos-vagrant/etcd <<EOL
+    cat > /home/core/etcd <<EOL
 \#cloud-config
 
 coreos:
@@ -375,7 +400,7 @@ coreos:
 EOL
     #export ETCD_OPTS="--name #{hostname} --listen-peer-urls http://$IP:2380 --listen-client-urls http://0.0.0.0:2379 --initial-advertise-peer-urls http://$IP:2380 --advertise-client-urls http://$IP:2379 --discovery #{etcd_url}"
     #echo "ETCD_OPTS=$ETCD_OPTS" >> /etc/environment
-    coreos-cloudinit --from-file=/var/lib/coreos-vagrant/etcd 1>etcd-application.log 2>&1 &
+    coreos-cloudinit --from-file=/home/core/etcd 1>etcd-application.log 2>&1 &
   else
     echo "Cannot determine IP, please issue a 'vagrant up #{hostname}' again}"
   fi
