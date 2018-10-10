@@ -85,7 +85,7 @@ docker_default_port = 2375
 docker_port = read_env 'DOCKER_PORT', docker_default_port.to_s
 docker_port = if docker_port then if docker_port.to_i.to_s == docker_port then docker_port.to_i else docker_default_port end else false end
 
-docker_experimental = read_bool_env 'DOCKER_EXPERMIENTAL', true
+docker_experimental = read_bool_env 'DOCKER_EXPERMIENTAL', false
 
 etcd = read_env 'ETCD', "3.3.9"
 
@@ -93,15 +93,17 @@ etcd_size = read_env 'ETCD_SIZE', 3 # 3 is the default discovery.etcd.io value
 if etcd_size
   etcd_size = etcd_size.to_i
   raise "Not enough servers configured: stated #{nodes} nodes while requested #{etcd_size} etcd nodes" if etcd_size > nodes
+else
+  etcd_size = 0
 end
 
-etcd_url = read_env 'ETCD_TOKEN_URL', true
+etcd_url = read_env 'ETCD_TOKEN_URL', !!etcd_size
 raise "ETCD_TOKEN_URL should be an url such as https://discovery.etcd.io/XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX unlike #{etcd_url} ; ignore this parameter to generate one for a new cluster" if etcd_url.is_a? String and not etcd_url.start_with? 'https://discovery.etcd.io/'
 etcd_url = false unless read_bool_env 'ETCD', true
 
 swarm = read_bool_env 'SWARM' # swarm mode is disabled by default ; use SWARM=on for setting up (only at node creation of leader)
 raise "You shouldn't disable etcd when swarm mode is enabled" if swarm and not etcd_url
-swarm_managers = (ENV['SWARM_MANAGERS'] || 'docker-2,docker-3').split(',').map { |node| node.strip }.select { |node| node and node != ''}
+swarm_managers = (ENV['SWARM_MANAGERS'] || "#{hostname_prefix}02,#{hostname_prefix}03").split(',').map { |node| node.strip }.select { |node| node and node != ''}
 
 nano = read_bool_env 'NANO', 1
 compose = read_bool_env 'COMPOSE', 1

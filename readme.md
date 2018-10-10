@@ -10,7 +10,12 @@ This script was tested against Vagrant > 1.9 and Virtualbox > 5.
 It shoud be OK on Linux (tested on 4.9), MacOS X (tested on 10.11 and 10.12), Windows (tested on 8 and 10). It might also work on other hosts, please report other working stations...
 In case you use Windows, you'll need an ssh client, such as the ones you get when installing git, Cygwin or MinGW64. Otherwise, have a look at the [PuTTY Vagrant plugin](https://github.com/nickryand/vagrant-multi-putty)
 
-## Usage ##
+## Single-node usage ##
+
+If you just want a single node to play with Docker:
+`git clone https://github.com/fondemen/coreos-swarm-vagrant.git ; cd coreos-swarm-vagrant;PUBLIC=0 NODES=1 ETCD_SIZE=0 vagrant up`
+
+## Multi-node usage ##
 
 First, clone the repo
 `git clone https://github.com/fondemen/coreos-swarm-vagrant.git ; cd coreos-swarm-vagrant`
@@ -91,3 +96,31 @@ vagrant up docker-01
 export DOCKER_HOST=192.168.2.100:2375 # to tell your docker client how to connect (192.168.2.100 is the private IP of your machine)
 docker info | grep ^Name\\s*:\\s* # to test whether the docker client actually connects docker-01
 ```
+
+## Configuration ##
+
+Many parameters can be adjusted by environment variable when issuing `vagrant up` commands.
+Boolean variables can be set up using 0, no , off, false to state false, or any other value for true.
+
+| Name                | Decription                                                                                                                           | Default             |
+| ------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |:-------------------:|
+| PREFIX              | The name of the VMs to set up (VMs will be named $PREFIX01, $PREFIX02, ... up to $PREFIX$NODES)                                      | docker-             |
+| NODES               | The number of nodes (VM) to set up (VMs are named from $PREFIX01 to $PREFIX$NODES). Must be set equal or above ETCD_SIZE             | 3                   |
+| ETCD_TOKEN_URL      | The etcd discovery URL or the file ; overrides any content in file `etcd_token_url`                                                  | On                  |
+| ETCD_SIZE           | The number of etcd members (less nodes: etcd waits for new member, more nodes: only available as backup nodes)                       | 3                   |
+| SWARM               | Whether to enable docker swarm mode ; etcd must be up and running before using this                                                  | Off                 |
+| SWARM_MANAGERS      | Coma-separated list of docker swarm managers ; first node ($PREFIX01) will always be a manager regardless of this setting            | $PREFIX02,$PREFIX03 |
+| COREOS              | The kind of ContainerOS to launch: stable, alpha, or beta                                                                            | alpha               |
+| ITF                 | The default host network interface to bridge to (to avoid vagrant prompt)                                                            |                     |
+| MEM                 | Memory to be allocated per VM (in mB)                                                                                                | 2048                |
+| CPU                 | Number of CPUs to be used per VM                                                                                                     | 1                   |
+| PRIVATE             | Whether to set up a private network interface for VMs (so that they can interact with each other)                                    | On                  |
+| MASTER_IP           | In case PRIVATE is true, the private IP for $PREFIX01 ; private IP for other nodes is obtained by incrementing this IP               | 192.168.2.100       |
+| PUBLIC              | Whether to set up a DHCP network interface for VMs (so that they can interact with each other across hosts)                          | On                  |
+| INTERNAL_ITF        | Through which network interface etcd should communicate with other member (depends on $PUBLIC and $PRIVATE)                          | public *or* private |
+| IPV6                | Whether to activate IPv6                                                                                                             | Off                 |
+| DOCKER_PORT         | The Docker port for node $PREFIX01 ; a docker client can control Docker (swarm) using this port of $PREFIX01                         | 2375                |
+| DOCKER_EXPERMIENTAL | Whether to enable docker experimental features                                                                                       | Off                 |
+| COMPOSE             | Whether to install docker-compose on $PREFIX01 or which version to install                                                           | On                  |
+| NANO                | Whether to install nano                                                                                                              | On                  |
+| DOCKER_EXPERMIENTAL | Whether to enable docker experimental features                                                                                       | Off                 |
