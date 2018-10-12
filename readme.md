@@ -21,7 +21,7 @@ First, clone the repo
 `git clone https://github.com/fondemen/coreos-swarm-vagrant.git ; cd coreos-swarm-vagrant`
 
 To initialize a cluster, just issue `vagrant up`.
-3 CoreOS nodes are set up (*docker-01*, *docker-O2*, and *docker-03*) and form an etcd2 cluster.
+3 CoreOS nodes are set up (*docker-01*, *docker-O2*, and *docker-03*) and form an etcd cluster.
 An etcd token url is automatically requested from discovery.etcd.io. The token url is stored to *etcd_token_url* file so that new nodes can be fired up and allowed to join.
 
 To start Swarm, then issue
@@ -55,14 +55,14 @@ set NODES=4
 set SWARM=on
 vagrant up docker-04
 ```
-As etcd should be up, there is no longer need for the two phase `vagrant up` then `vagrant provision` for this node to join the Swarm.
+As etcd should be already up and running, there is no longer need for the two phase `vagrant up` for this node to join the Swarm.
 
 ## Setting up a new node on another VirtualBox host ##
 
-If you wand to add a node on another host, copy the contents of the previously generated *etcd_token_url* file and fire on the new host (replace XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX with you etcd token):
+If you wand to add a node on another host, copy the contents of the previously generated *etcd_token_url* file and fire on the new host (replacing XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX with your etcd token):
 ```
 git clone https://github.com/fondemen/coreos-swarm-vagrant.git ; cd coreos-swarm-vagrant
-SWARM=ON NODES=4 ETCD_TOKEN_URL='https://discovery.etcd.io/XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX' vagrant up docker-4
+SWARM=ON NODES=4 ETCD_TOKEN_URL='https://discovery.etcd.io/XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX' vagrant up docker-04
 ```
 or on Windows cmd
 ```
@@ -70,13 +70,13 @@ git clone https://github.com/fondemen/coreos-swarm-vagrant.git ; cd coreos-swarm
 set SWARM=ON
 set NODES=4
 set ETCD_TOKEN_URL='https://discovery.etcd.io/XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX'
-vagrant up docker-4
+vagrant up docker-04
 ```
-The ETCD_TOKEN_URL is also stored on etcd_token file on the new host making the ETCD_TOKEN_URL parameter useless for next `vagrant up`.
+The ETCD_TOKEN_URL is also stored on etcd_token file on the new host making the ETCD_TOKEN_URL parameter unnecessary for next `vagrant up`.
 
 ## Managers ##
 
-For swarm to be highly available (i.e. survive the loss of the leader node), one needs to add manager nodes. Default manager nodes is docker-01 alone.
+For swarm to be highly available (i.e. survive the loss of the leader node), one needs to add manager nodes. Default manager nodes are docker-01, docker-02, and docker-03.
 You can change them using the SWARM_MANAGERS environment variable, e.g. `SWARM=ON NODES=8 SWARM_MANAGERS=docker-1,docker-3,docker-5 vagrant provision`.
 
 ## Destroying cluster ##
@@ -87,7 +87,7 @@ etcd token must be re-created for a new cluster, that's why the *etcd_token_url*
 
 ## Docker remote access ##
 
-If you have the docker client installed, you can control you Docker cluster from the host machine running docker-01 VM.
+If you have the docker client installed, you can control Docker of ocker-01 VM from the host machine.
 To do so:
 ```
 export DOCKER_PORT=2375
