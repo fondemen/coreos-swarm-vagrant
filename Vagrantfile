@@ -57,7 +57,7 @@ raise "There should be at least one node and at most 255 while prescribed #{node
 
 coreos_canal = (read_env 'COREOS', 'alpha').downcase # could be 'beta', 'stable'
 box = "coreos-#{coreos_canal}"
-box_url = "https://#{$update_channel}.release.core-os.net/amd64-usr/current/coreos_production_vagrant_virtualbox.json"
+box_url = "https://#{coreos_canal}.release.core-os.net/amd64-usr/current/coreos_production_vagrant_virtualbox.json"
 
 public = read_bool_env 'PUBLIC', true
 private = read_bool_env 'PRIVATE', true
@@ -93,13 +93,12 @@ etcd_size = read_env 'ETCD_SIZE', 3 # 3 is the default discovery.etcd.io value
 if etcd_size
   etcd_size = etcd_size.to_i
   raise "Not enough servers configured: stated #{nodes} nodes while requested #{etcd_size} etcd nodes" if etcd_size > nodes
+  etcd_url = read_env 'ETCD_TOKEN_URL', true
+  raise "ETCD_TOKEN_URL should be an url such as https://discovery.etcd.io/XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX unlike #{etcd_url} ; ignore this parameter to generate one for a new cluster" if etcd_url.is_a? String and not etcd_url.start_with? 'https://discovery.etcd.io/'
 else
   etcd_size = 0
+  etcd_url = false
 end
-
-etcd_url = read_env 'ETCD_TOKEN_URL', !!etcd_size
-raise "ETCD_TOKEN_URL should be an url such as https://discovery.etcd.io/XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX unlike #{etcd_url} ; ignore this parameter to generate one for a new cluster" if etcd_url.is_a? String and not etcd_url.start_with? 'https://discovery.etcd.io/'
-etcd_url = false unless read_bool_env 'ETCD', true
 
 swarm = read_bool_env 'SWARM' # swarm mode is disabled by default ; use SWARM=on for setting up (only at node creation of leader)
 raise "You shouldn't disable etcd when swarm mode is enabled" if swarm and not etcd_url
