@@ -55,9 +55,9 @@ hostname_prefix = read_env 'PREFIX', 'docker-'
 nodes = (read_env 'NODES', 3).to_i
 raise "There should be at least one node and at most 255 while prescribed #{nodes} ; you can set up node number like this: NODES=2 vagrant up" unless nodes.is_a? Integer and nodes >= 1 and nodes <= 255
 
-coreos_canal = (read_env 'COREOS', 'alpha').downcase # could be 'beta', 'stable'
-box = "coreos-#{coreos_canal}"
-box_url = "https://#{coreos_canal}.release.core-os.net/amd64-usr/current/coreos_production_vagrant_virtualbox.json"
+coreos_canal = (read_env 'COREOS', 'alpha').downcase # could be 'beta', 'stable', 'uha'
+box = if coreos_canal == 'uha' then 'coreos-alpha' else "coreos-#{coreos_canal}" end
+box_url = if coreos_canal == 'uha' then 'https://svn.ensisa.uha.fr/vagrant/coreos_production_vagrant.json' else "https://#{coreos_canal}.release.core-os.net/amd64-usr/current/coreos_production_vagrant_virtualbox.json" end
 
 public = read_bool_env 'PUBLIC', true
 private = read_bool_env 'PRIVATE', true
