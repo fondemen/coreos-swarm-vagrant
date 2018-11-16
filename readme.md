@@ -87,6 +87,12 @@ The ETCD_TOKEN_URL is also stored on etcd_token file on the new host making the 
 For swarm to be highly available (i.e. survive the loss of the leader node), one needs to add manager nodes. Default manager nodes are docker-01, docker-02, and docker-03.
 You can change them using the SWARM_MANAGERS environment variable, e.g. `SWARM=ON NODES=8 SWARM_MANAGERS=docker-1,docker-3,docker-5 vagrant provision`.
 
+## Uploading files ##
+
+Virtual machines are not configured to share a folder. Nevertheless, a convenient mean to upload a file on a node is to use the scp plugin for Vagrant: `vagrant plugin install vagrant-scp`
+
+Once installed, you can upload any file of the host to a node (e.g. docker-01) from the coreos-swarm-vagrant directory : `vagrant scp [your file] docker-01:~`
+
 ## Destroying cluster ##
 
 Simply issue a `vagrant destroy && rm etcd_token_url` on each Vagrant host.
