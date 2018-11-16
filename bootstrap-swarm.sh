@@ -7,6 +7,8 @@ fi
 export NODES=$1
 export ETCD_SIZE=$1
 
+vagrant box update
+
 UP=$( vagrant status | grep '^docker-' | grep running | wc -l | tr -d '[:space:]')
 echo "$UP nodes found runnig"
 if [ "0" == "$UP" -a -f ./etcd_token_url ] ; then
