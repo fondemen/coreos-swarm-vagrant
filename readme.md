@@ -17,12 +17,20 @@ If you just want a single node to play with Docker:
 
 ## Multi-node usage ##
 
+### TL;DR ###
+
+Use `boostrap-swarm.sh 3` to setup a brand new Docker Swarm cluster of 3 nodes...
+
+### Manual setup ###
+
 First, clone the repo
 `git clone https://github.com/fondemen/coreos-swarm-vagrant.git ; cd coreos-swarm-vagrant`
 
 To initialize a cluster, just issue `vagrant up`.
-3 CoreOS nodes are set up (*docker-01*, *docker-O2*, and *docker-03*) and form an etcd cluster.
+3 CoreOS nodes are set up (*docker-01*, *docker-02*, and *docker-03*) and form an etcd cluster.
 An etcd token url is automatically requested from discovery.etcd.io. The token url is stored to *etcd_token_url* file so that new nodes can be fired up and allowed to join.
+
+Before starting Swarm, you need to check that etcd is up and running: `vagrant ssh docker-01 -c 'etcdctl cluster-health'`
 
 To start Swarm, then issue
 ```
