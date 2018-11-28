@@ -87,7 +87,8 @@ docker_port = if docker_port then if docker_port.to_i.to_s == docker_port then d
 
 docker_experimental = read_bool_env 'DOCKER_EXPERMIENTAL', false
 
-etcd = read_env 'ETCD', "3.3.9"
+etcd = read_env 'ETCD', "latest" # check https://quay.io/repository/coreos/etcd?tag=latest&tab=tags
+etcd = 'v'+etcd if etcd && etcd =~ /\A\d/ # e.g. 3.3.10 -> v3.3.10
 
 etcd_size = read_env 'ETCD_SIZE', 3 # 3 is the default discovery.etcd.io value
 if etcd_size
@@ -392,7 +393,7 @@ coreos:
         - name: 20-clct-etcd-member.conf
           content: |
             [Service]
-            Environment="ETCD_IMAGE_TAG=v#{etcd}"
+            Environment="ETCD_IMAGE_TAG=#{etcd}"
             Environment="ETCD_ADVERTISE_CLIENT_URLS=http://$IP:2379"
             Environment="ETCD_DISCOVERY=#{etcd_url}"
             Environment="ETCD_INITIAL_ADVERTISE_PEER_URLS=http://$IP:2380"
