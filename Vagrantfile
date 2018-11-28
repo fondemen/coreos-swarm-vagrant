@@ -387,6 +387,7 @@ coreos:
   units:
     - name: etcd-member.service
       command: start
+      enable: true
       drop-ins:
         - name: 20-clct-etcd-member.conf
           content: |
