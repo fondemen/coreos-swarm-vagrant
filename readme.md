@@ -126,6 +126,7 @@ Boolean variables can be set up using 0, no , off, false to state false, or any 
 | SWARM               | Whether to enable docker swarm mode ; etcd must be up and running before using this                                                  | Off                 |
 | SWARM_MANAGERS      | Coma-separated list of docker swarm managers ; first node ($PREFIX01) will always be a manager regardless of this setting            | $PREFIX02,$PREFIX03 |
 | COREOS              | The kind of ContainerOS to launch: stable, alpha, or beta                                                                            | alpha               |
+| REBOOT_ON_UPDATE    | Whether to reboot on OS update (see locksmith)                                                                                       | Off                 |
 | ITF                 | The default host network interface to bridge to (to avoid vagrant prompt)                                                            |                     |
 | MEM                 | Memory to be allocated per VM (in mB)                                                                                                | 2048                |
 | CPU                 | Number of CPUs to be used per VM                                                                                                     | 1                   |

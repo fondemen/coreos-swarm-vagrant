@@ -59,6 +59,8 @@ coreos_canal = (read_env 'COREOS', 'alpha').downcase # could be 'beta', 'stable'
 box = if coreos_canal == 'uha' then 'coreos-alpha' else "coreos-#{coreos_canal}" end
 box_url = if coreos_canal == 'uha' then 'https://svn.ensisa.uha.fr/vagrant/coreos_production_vagrant.json' else "https://#{coreos_canal}.release.core-os.net/amd64-usr/current/coreos_production_vagrant_virtualbox.json" end
 
+enable_reboot = read_bool_env 'REBOOT_ON_UPDATE'
+
 public = read_bool_env 'PUBLIC', true
 private = read_bool_env 'PRIVATE', true
 
@@ -195,6 +197,20 @@ Vagrant.configure("2") do |config_all|
           '--paravirtprovider', 'kvm',
         ]
 	config.ignition.config_obj = vb
+      end
+
+      unless enable_reboot
+        # Avoid being annoyed by auto-update reboots
+        config.vm.provision :shell, :name => "disabling auto-reboot on update", :inline => <<-EOF
+cat > /home/core/noreboot <<EOL
+\#cloud-config
+
+coreos:
+  update:
+    reboot_strategy: "off"
+EOL
+coreos-cloudinit --from-file=/home/core/noreboot 1>noreboot-application.log 2>&1
+EOF
       end
 
       if public
