@@ -123,6 +123,7 @@ Boolean variables can be set up using 0, no , off, false to state false, or any 
 | ETCD_TOKEN_URL      | The etcd discovery URL or the file ; overrides any content in file `etcd_token_url`                                                  | On                  |
 | ETCD_SIZE           | The number of etcd members (less nodes: etcd waits for new member, more nodes: only available as backup nodes)                       | 3                   |
 | ETCD                | The etcd version to use (in case it's enabled by $ETCD_TOKEN_URL and  $ETCD_SIZE ) ; see [available tags](https://quay.io/repository/coreos/etcd?tab=tags)                                                  | latest              |
+| ETCD_PORT           | The port where to publish etcd client port of first node on the host (0 means deactivated)       | 0                |
 | SWARM               | Whether to enable docker swarm mode ; etcd must be up and running before using this                                                  | Off                 |
 | SWARM_MANAGERS      | Coma-separated list of docker swarm managers ; first node ($PREFIX01) will always be a manager regardless of this setting            | $PREFIX02,$PREFIX03 |
 | COREOS              | The kind of ContainerOS to launch: stable, alpha, or beta                                                                            | alpha               |

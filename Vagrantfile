@@ -103,6 +103,13 @@ else
   etcd_url = false
 end
 
+if read_bool_env 'ETCD_PORT'
+  etcd_port = read_env 'ETCD_PORT', 0
+  etcd_port = 2379 unless etcd_port.is_a? Integer
+else
+  etcd_port = 0
+end
+
 swarm = read_bool_env 'SWARM' # swarm mode is disabled by default ; use SWARM=on for setting up (only at node creation of leader)
 raise "You shouldn't disable etcd when swarm mode is enabled" if swarm and not etcd_url
 swarm_managers = (ENV['SWARM_MANAGERS'] || "#{hostname_prefix}02,#{hostname_prefix}03").split(',').map { |node| node.strip }.select { |node| node and node != ''}
@@ -341,6 +348,9 @@ EOF
       end
 
       if node_number == 1
+        # Publishing etcd client port
+        config.vm.network "forwarded_port", guest: 2379, host: etcd_port if etcd_port > 0
+
         # Making Docker remotely available from the host machine
         config.vm.provision :shell, run: "always", :name => "configuring etcd", :inline => <<-EOF
 REMOTE_DOCKER_CONF_FILE=/etc/systemd/system/docker-tcp.socket
