@@ -30,7 +30,7 @@ def read_bool_env key, default_value = false
   end
 end
 
-def read_env key, default_value = nil, false_value = false, true_value = true
+def read_env key, default_value = nil, false_value = false
   key = key.to_s
   if ENV.include?(key)
     val = ENV[key].strip
@@ -61,7 +61,7 @@ box_url = if coreos_canal == 'uha' then 'https://svn.ensisa.uha.fr/vagrant/coreo
 
 enable_reboot = read_bool_env 'REBOOT_ON_UPDATE'
 
-public = read_bool_env 'PUBLIC', true
+public = read_bool_env 'PUBLIC', false
 private = read_bool_env 'PRIVATE', true
 
 public_itf = 'eth1' # depends on chosen box and order of interface declaration
@@ -89,7 +89,7 @@ docker_port = if docker_port then if docker_port.to_i.to_s == docker_port then d
 
 docker_experimental = read_bool_env 'DOCKER_EXPERMIENTAL', false
 
-etcd = read_env 'ETCD', "latest" # check https://quay.io/repository/coreos/etcd?tag=latest&tab=tags
+etcd = read_env 'ETCD', 'latest' # check https://quay.io/repository/coreos/etcd?tag=latest&tab=tags
 etcd = 'v'+etcd if etcd && etcd =~ /\A\d/ # e.g. 3.3.10 -> v3.3.10
 
 etcd_size = read_env 'ETCD_SIZE', 3 # 3 is the default discovery.etcd.io value
@@ -135,7 +135,7 @@ if etcd_url and not etcd_url.kind_of?(String) and File.file?(etcd_file_path)
   etcd_url = File.read etcd_file_path rescue true
 end
 # generating etcd token
-if etcd_url and not etcd_url.kind_of?(String)
+if etcd_url and not etcd_url.kind_of?(String) and public
   require 'open-uri'
   puts 'Requesting a brand new etcd token'
   etcd_size_rq = if etcd_size then "?size=#{etcd_size.to_i}" else '' end
@@ -146,7 +146,7 @@ if etcd_url and etcd_url.kind_of?(String)
   File.open(etcd_file_path, 'w') do |file|
     file.write(etcd_url)
   end
-else 
+elsif public
   etcd_url = false
 end
 
@@ -185,7 +185,7 @@ Vagrant.configure("2") do |config_all|
     hostname = definition[:hostname]
     ip = definition[:ip]
     
-    config_all.vm.define hostname do |config|
+    config_all.vm.define hostname, primary: node_number == 1 do |config|
     
       config.vm.box = box
       begin config.vm.box_url = box_url if box_url rescue nil end
@@ -225,6 +225,7 @@ EOF
         # options[:use_dhcp_assigned_default_route] = true
         options[:bridge] = host_itf if host_itf
         options[:auto_config] = false
+        options[:type] = 'dhcp'
         config.vm.network "public_network", **options
 
         machine_id = (Digest::MD5.hexdigest "#{hostname} on #{vagrant_host}").upcase
@@ -379,9 +380,15 @@ EOF
       
       if etcd_url
 
-        # Storing found token
-        File.open(etcd_file_path, 'w') do |file|
-          file.write(etcd_url)
+        if public
+          # Storing found token
+          File.open(etcd_file_path, 'w') do |file|
+            file.write(etcd_url)
+          end
+          etcd_discovery = "
+    discovery: #{etcd_url}"
+        else
+          etcd_discovery = ""
         end
       
         config.vm.provision :shell, run: "always", :name => "configuring etcd", :inline => <<-EOF
@@ -403,14 +410,15 @@ if [ ! -f /home/core/etcd ]; then
 
 coreos:
   etcd:
-    discovery: #{etcd_url}
+    #{if public then "discovery: #{etcd_url}" else "" end}
     version: #{etcd}
     name: #{hostname}
     advertise-client-urls: http://$IP:2379
     initial-advertise-peer-urls: http://$IP:2380
     listen-client-urls: http://0.0.0.0:2379
     listen-peer-urls: http://$IP:2380
-    initial_cluster: #{root_hostname}=http://#{root_ip}:2380
+    #{if public then "" else "initial-cluster: #{definitions[0, etcd_size].map { |definition| "#{definition[:hostname]}=http://#{definition[:ip]}:2380"}.join ','}" end}
+    #{if public then "" else "initial-cluster-state: new" end}
   units:
     - name: etcd-member.service
       command: start
@@ -420,8 +428,8 @@ coreos:
           content: |
             [Service]
             Environment="ETCD_IMAGE_TAG=#{etcd}"
+            Environment="#{if public then "ETCD_DISCOVERY=#{etcd_url}" else "ETCD_INITIAL_CLUSTER=#{definitions[0, etcd_size].map { |definition| "#{definition[:hostname]}=http://#{definition[:ip]}:2380"}.join ','}" end}"
             Environment="ETCD_ADVERTISE_CLIENT_URLS=http://$IP:2379"
-            Environment="ETCD_DISCOVERY=#{etcd_url}"
             Environment="ETCD_INITIAL_ADVERTISE_PEER_URLS=http://$IP:2380"
             Environment="ETCD_LISTEN_CLIENT_URLS=http://0.0.0.0:2379"
             Environment="ETCD_LISTEN_PEER_URLS=http://$IP:2380"
