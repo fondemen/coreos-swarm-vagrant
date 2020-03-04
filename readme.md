@@ -2,7 +2,7 @@ This is a Vagrantfile for mounting a Docker Swarm cluster using CoreOS nodes
 
 Used key value store for swarm is etcd.
 
-Both a public (DHCP assigned) and a private (only visible on the node) network interfaces are set up. By default, etcd and swarm are advertized using the public interface so that one can set up multiple nodes on different machines of the local network.
+Both a public (DHCP assigned) and a private (only visible on the node) network interfaces are set up. By default, etcd and swarm are advertized using the private interface, but by setting up the PUBLIC env var to true makes it possible to set up multiple nodes on different machines of the local network.
 
 ## Requirements ##
 
@@ -13,29 +13,28 @@ In case you use Windows, you'll need an ssh client, such as the ones you get whe
 ## Single-node usage ##
 
 If you just want a single node to play with Docker:
-`git clone https://github.com/fondemen/coreos-swarm-vagrant.git ; cd coreos-swarm-vagrant;PUBLIC=0 NODES=1 ETCD_SIZE=0 vagrant up`
+`git clone https://github.com/fondemen/coreos-swarm-vagrant.git ; cd coreos-swarm-vagrant;NODES=1 ETCD_SIZE=0 vagrant up`
 
 ## Multi-node usage ##
 
 ### TL;DR ###
 
-Use `boostrap-swarm.sh 3` to setup a brand new Docker Swarm cluster of 3 nodes...
+Use `./bootstrap-swarm.sh 3` to setup a brand new Docker Swarm cluster of 3 nodes...
 
 ### Manual setup ###
 
 First, clone the repo
 `git clone https://github.com/fondemen/coreos-swarm-vagrant.git ; cd coreos-swarm-vagrant`
 
-To initialize a cluster, just issue `vagrant up`.
+To initialize a cluster, just fire `vagrant up`.
 3 CoreOS nodes are set up (*docker-01*, *docker-02*, and *docker-03*) and form an etcd cluster.
-An etcd token url is automatically requested from discovery.etcd.io. The token url is stored to *etcd_token_url* file so that new nodes can be fired up and allowed to join.
+In case you are using the public interface (by setting the PUBLIC env var to on), an etcd token url is automatically requested from discovery.etcd.io. The token url is stored to *etcd_token_url* file so that new nodes can be fired up and allowed to join.
 
 Before starting Swarm, you need to check that etcd is up and running: `vagrant ssh docker-01 -c 'etcdctl cluster-health'`
 
 To start Swarm, then issue
 ```
-export SWARM=on
-vagrant up
+SWARM=on vagrant up
 ```
 or on windows cmd
 ```
@@ -53,12 +52,14 @@ It's now time to play with Docker Swarm.
 
 To add a fourth node:
 ```
+export PUBLIC=on
 export NODES=4
 export SWARM=on
 vagrant up docker-04
 ```
 or on Windows cmd
 ```
+set PUBLIC=on
 set NODES=4
 set SWARM=on
 vagrant up docker-04
@@ -67,14 +68,21 @@ As etcd should be already up and running, there is no longer need for the two ph
 
 ## Setting up a new node on another VirtualBox host ##
 
+This requires the swarm cluster was created with the PUBLIC env var set to on.
+
 If you wand to add a node on another host, copy the contents of the previously generated *etcd_token_url* file and fire on the new host (replacing XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX with your etcd token):
 ```
 git clone https://github.com/fondemen/coreos-swarm-vagrant.git ; cd coreos-swarm-vagrant
-SWARM=ON NODES=4 ETCD_TOKEN_URL='https://discovery.etcd.io/XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX' vagrant up docker-04
+export PUBLIC=ON
+export NODES=4
+export SWARM=ON
+export ETCD_TOKEN_URL='https://discovery.etcd.io/XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX'
+vagrant up docker-04
 ```
 or on Windows cmd
 ```
 git clone https://github.com/fondemen/coreos-swarm-vagrant.git ; cd coreos-swarm-vagrant
+set PUBLIC=ON
 set SWARM=ON
 set NODES=4
 set ETCD_TOKEN_URL='https://discovery.etcd.io/XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX'
@@ -85,7 +93,7 @@ The ETCD_TOKEN_URL is also stored on etcd_token file on the new host making the 
 ## Managers ##
 
 For swarm to be highly available (i.e. survive the loss of the leader node), one needs to add manager nodes. Default manager nodes are docker-01, docker-02, and docker-03.
-You can change them using the SWARM_MANAGERS environment variable, e.g. `SWARM=ON NODES=8 SWARM_MANAGERS=docker-1,docker-3,docker-5 vagrant provision`.
+You can change them using the SWARM_MANAGERS environment variable, e.g. `SWARM=ON NODES=8 SWARM_MANAGERS=docker-01,docker-03,docker-05 vagrant provision`.
 
 ## Uploading files ##
 
@@ -101,13 +109,13 @@ etcd token must be re-created for a new cluster, that's why the *etcd_token_url*
 
 ## Docker remote access ##
 
-If you have the docker client installed, you can control Docker of ocker-01 VM from the host machine.
+If you have the docker client installed, you can control Docker of the docker-01 VM from the host machine.
 To do so:
 ```
 export DOCKER_PORT=2375
 vagrant up docker-01
 
-export DOCKER_HOST=192.168.2.100:2375 # to tell your docker client how to connect (192.168.2.100 is the private IP of your machine)
+export DOCKER_HOST=192.168.2.100:2375 # to tell your docker client how to connect (192.168.2.100 is the private IP of the VM)
 docker info | grep ^Name\\s*:\\s* # to test whether the docker client actually connects docker-01
 ```
 
@@ -133,11 +141,9 @@ Boolean variables can be set up using 0, no , off, false to state false, or any 
 | CPU                 | Number of CPUs to be used per VM                                                                                                     | 1                   |
 | PRIVATE             | Whether to set up a private network interface for VMs (so that they can interact with each other)                                    | On                  |
 | MASTER_IP           | In case PRIVATE is true, the private IP for $PREFIX01 ; private IP for other nodes is obtained by incrementing this IP               | 192.168.2.100       |
-| PUBLIC              | Whether to set up a DHCP network interface for VMs (so that they can interact with each other across hosts)                          | On                  |
+| PUBLIC              | Whether to set up a DHCP network interface for VMs (so that they can interact with each other across hosts)                          | Off                  |
 | INTERNAL_ITF        | Through which network interface etcd should communicate with other member (depends on $PUBLIC and $PRIVATE)                          | public *or* private |
-| IPV6                | Whether to activate IPv6                                                                                                             | Off                 |
 | DOCKER_PORT         | The Docker port for node $PREFIX01 ; a docker client can control Docker (swarm) using this port of $PREFIX01                         | 2375                |
 | DOCKER_EXPERMIENTAL | Whether to enable docker experimental features                                                                                       | Off                 |
 | COMPOSE             | Whether to install docker-compose on $PREFIX01 or which version to install                                                           | On                  |
 | NANO                | Whether to install nano                                                                                                              | On                  |
-| DOCKER_EXPERMIENTAL | Whether to enable docker experimental features                                                                                       | Off                 |

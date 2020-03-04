@@ -66,7 +66,6 @@ private = read_bool_env 'PRIVATE', true
 
 private_itf = 'eth1' # depends on chosen box and order of interface declaration
 public_itf = if private then 'eth2' else 'eth1' end # depends on chosen box
-ipv6 = read_bool_env 'IPV6' # ipv6 is disabled by default ; use IPV6=on for avoiding this (to be set at node creation only)
 default_itf = read_env 'DEFAULT_PUBLIC_ITF', if public then public_itf else private_itf end # default gateway
 internal_itf = case ENV['INTERNAL_ITF']
   when 'public'
