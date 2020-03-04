@@ -64,8 +64,8 @@ enable_reboot = read_bool_env 'REBOOT_ON_UPDATE'
 public = read_bool_env 'PUBLIC', false
 private = read_bool_env 'PRIVATE', true
 
-public_itf = 'eth1' # depends on chosen box and order of interface declaration
-private_itf = if public then 'eth2' else 'eth1' end # depends on chosen box
+private_itf = 'eth1' # depends on chosen box and order of interface declaration
+public_itf = if private then 'eth2' else 'eth1' end # depends on chosen box
 ipv6 = read_bool_env 'IPV6' # ipv6 is disabled by default ; use IPV6=on for avoiding this (to be set at node creation only)
 default_itf = read_env 'DEFAULT_PUBLIC_ITF', if public then public_itf else private_itf end # default gateway
 internal_itf = case ENV['INTERNAL_ITF']
@@ -219,6 +219,9 @@ EOL
 coreos-cloudinit --from-file=/home/core/noreboot 1>noreboot-application.log 2>&1
 EOF
       end
+      
+      config.vm.network :private_network, ip: ip
+      config.ignition.ip = ip if private
 
       if public
         options = {}
@@ -235,72 +238,11 @@ EOF
         config.vm.provider :virtualbox do |vb, override|
           vb.customize [
             'modifyvm', :id,
-            '--macaddress2', "#{machine_mac.delete ':'}",
+            "--macaddress#{if private then "3" else "2" end}", "#{machine_mac.delete ':'}",
           ]
         end
-      
-        # Avoid getting multiple IPs from DHCP
-        # see https://coreos.com/os/docs/latest/network-config-with-networkd.html
-        config.vm.provision :shell, :name => "public interface setup", :inline => <<-EOF
-cat > /home/core/dhcp <<EOL
-\#cloud-config
-  
-hostname: #{hostname}
-
-coreos:
-  units:
-    - name: systemd-networkd.service
-      command: stop
-    - name: 00-#{public_itf}.network
-      runtime: true
-      content: |
-        [Match]
-        Name=#{public_itf}
-
-        [Link]
-        MACAddress=#{machine_mac}
-
-        [Network]
-        DHCP=yes
-        
-        [DHCP]
-        UseMTU=true
-        UseDomains=true
-        ClientIdentifier=mac
-    - name: down-interfaces.service
-      command: start
-      content: |
-        [Service]
-        Type=oneshot
-        ExecStart=/usr/bin/ip link set #{public_itf} down
-        ExecStart=/usr/bin/ip addr flush dev #{public_itf}
-    - name: systemd-networkd.service
-      command: restart
-EOL
-coreos-cloudinit --from-file=/home/core/dhcp 1>dhcp-opt-application.log 2>&1
-EOF
       end
-      
-      config.vm.network :private_network, ip: ip
-      config.ignition.ip = ip
-  
-      # Network stuff
-#      if default_itf
-#        # Clearing unwanted gateways
-#        config.vm.provision "shell", run: "always",  inline: "ip route show | grep '^default' | sed 's;^.*\\sdev\\s*\\([a-z0-9]*\\)\\s*.*$;\\1;' | grep -v #{default_itf} | xargs -I ITF ip route del default dev ITF"
-#        # Making it sure a default route exists
-#        config.vm.provision "shell", run: "always", inline: "ip route show | grep -q '^default' || dhcpcd #{default_itf}"
-#      end
-      # Dropping secondary dhcp-assigned interfaces
-      # config.vm.provision "shell", run: "always", inline: "for itf in $(ip -4 addr list #{public_itf} |  grep secondary | grep inet | sed 's;.*inet\\s*\\([0-9.]*/[0-9]*\\).*;\\1;'); do sudo ip addr del $itf dev #{public_itf}; done"
-#      unless ipv6
-#        # Disabling IPv6
-#        ipv6_file = '/etc/sysctl.d/vagrant-disable-ipv6.conf'
-#        config.vm.provision "shell", inline: "touch #{ipv6_file} ; sed -i '/disable_ipv6/d' #{ipv6_file}; find /proc/sys/net/ipv6/ -name disable_ipv6 | sed -e 's;^/proc/sys/;;' -e 's;/;.;g' -e 's;$; = 1;' >> #{ipv6_file} ; sysctl -p #{ipv6_file}"
-#      end
-#      # checking all interfaces are active
-#      config.vm.provision "shell", run: "always", inline: "ip a | grep '^[0-9]' | grep DOWN | cut -d: -f2 | grep -v docker | xargs -I ITF ip link set dev ITF up"
-      
+
       # Referencing all IPs
       definitions.each do |other_nodes|
         config.vm.provision :shell, :name  => "referencing #{other_nodes[:hostname]}", :inline => "grep -q " + other_nodes[:hostname] + " /etc/hosts || echo \"" + other_nodes[:ip] + " " + other_nodes[:hostname] + "\" >> /etc/hosts"
