@@ -147,3 +147,4 @@ Boolean variables can be set up using 0, no , off, false to state false, or any 
 | DOCKER_EXPERMIENTAL | Whether to enable docker experimental features                                                                                       | Off                 |
 | COMPOSE             | Whether to install docker-compose on $PREFIX01 or which version to install                                                           | On                  |
 | NANO                | Whether to install nano                                                                                                              | On                  |
+| SCP                 | Whether to install the [vagrant-scp](https://github.com/invernizzi/vagrant-scp) plugin                                               | On                  |

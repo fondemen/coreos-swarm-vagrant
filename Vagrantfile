@@ -8,19 +8,6 @@
 
 Vagrant.require_version ">= 1.6.0"
 
-# Make sure the vagrant-ignition plugin is installed
-required_plugins = %w(vagrant-ignition)
-
-plugins_to_install = required_plugins.select { |plugin| not Vagrant.has_plugin? plugin }
-if not plugins_to_install.empty?
-  puts "Installing plugins: #{plugins_to_install.join(' ')}"
-  if system "vagrant plugin install #{plugins_to_install.join(' ')}"
-    exec "vagrant #{ARGV.join(' ')}"
-  else
-    abort "Installation of one or more plugins has failed. Aborting."
-  end
-end
-
 def read_bool_env key, default_value = false
   key = key.to_s
   if ENV.include?(key)
@@ -41,6 +28,20 @@ def read_env key, default_value = nil, false_value = false
     end
   else
     return default_value
+  end
+end
+
+# Make sure the vagrant-ignition plugin is installed
+required_plugins = %w(vagrant-ignition)
+required_plugins << 'vagrant-scp' if read_bool_env 'SCP', true
+
+plugins_to_install = required_plugins.select { |plugin| not Vagrant.has_plugin? plugin }
+if not plugins_to_install.empty?
+  puts "Installing plugins: #{plugins_to_install.join(' ')}"
+  if system "vagrant plugin install #{plugins_to_install.join(' ')}"
+    exec "vagrant #{ARGV.join(' ')}"
+  else
+    abort "Installation of one or more plugins has failed. Aborting."
   end
 end
 
