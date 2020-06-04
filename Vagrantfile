@@ -116,7 +116,7 @@ swarm_managers = (ENV['SWARM_MANAGERS'] || "#{hostname_prefix}02,#{hostname_pref
 
 nano = read_bool_env 'NANO', 1
 compose = read_bool_env 'COMPOSE', 1
-compose = read_env 'COMPOSE', '1.25.4' if compose
+compose = read_env 'COMPOSE', '1.26.0' if compose
 
 definitions = (1..nodes).map do |node_number|
   hostname = "%s%02d" % [hostname_prefix, node_number]
