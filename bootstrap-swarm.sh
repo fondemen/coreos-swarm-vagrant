@@ -22,7 +22,7 @@ echo "Setting up all $NODES machines"
 vagrant up || exit 2
 echo "Waiting for etcd to be availabble"
 until vagrant ssh docker-01 -c 'etcdctl cluster-health' ; do
-	pause 1
+	sleep 1
 done
 echo "Setting up Docker Swarm"
 SWARM=on vagrant up
